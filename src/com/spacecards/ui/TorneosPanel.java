@@ -282,6 +282,10 @@ public class TorneosPanel extends JPanel {
             }
 
             Usuario org = (Usuario) cmbOrg.getSelectedItem();
+            if (org == null) {
+                JOptionPane.showMessageDialog(dialog, "Debes registrar y seleccionar al menos un usuario organizador.", "Validación", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
             int cupo = (int) spinCupo.getValue();
 
             Torneo nuevo = new Torneo(0, org, nom, (String) cmbJuego.getSelectedItem(),

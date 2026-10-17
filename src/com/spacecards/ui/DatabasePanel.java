@@ -21,7 +21,7 @@ public class DatabasePanel extends JPanel {
     private final JComboBox<String> cmbQuickQueries = new JComboBox<>(new String[]{
             "-- Consultas rápidas recomendadas --",
             "SELECT id_producto, codigo_barras, nombre, categoria, precio_unitario, stock FROM producto ORDER BY stock ASC;",
-            "SELECT v.id_venta, c.nombre || ' ' || c.apellido AS cliente, v.metodo_pago, v.monto_total, v.fecha_venta FROM venta v LEFT JOIN cliente c ON v.id_cliente = c.id_cliente ORDER BY v.id_venta DESC;",
+            "SELECT v.id_venta, CONCAT(c.nombre, ' ', c.apellido) AS cliente, v.metodo_pago, v.monto_total, v.fecha_venta FROM venta v LEFT JOIN cliente c ON v.id_cliente = c.id_cliente ORDER BY v.id_venta DESC;",
             "SELECT id_preventa, monto_anticipo, monto_total, fecha_estimada_entrega, estado FROM preventa WHERE estado = 'Pendiente';",
             "SELECT t.nombre_torneo, t.juego_tcg, t.fecha_evento, t.costo_inscripcion, t.cupo_maximo, t.estado, COUNT(pt.id_inscripcion) AS inscritos FROM torneo t LEFT JOIN participante_torneo pt ON t.id_torneo = pt.id_torneo GROUP BY t.id_torneo;",
             "SELECT p.nombre, SUM(d.cantidad) AS unidades_vendidas, SUM(d.subtotal) AS ingresos FROM detalle_venta d JOIN producto p ON d.id_producto = p.id_producto GROUP BY p.id_producto ORDER BY unidades_vendidas DESC;",
@@ -62,15 +62,19 @@ public class DatabasePanel extends JPanel {
         JPanel headerButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         headerButtons.setOpaque(false);
 
+        JButton btnConfig = UITheme.createSecondaryButton("⚙️ Conexión (MariaDB / SQLite)");
+        btnConfig.addActionListener(e -> showConfigDialog());
+
         JButton btnOpen = UITheme.createSecondaryButton("📂 Cambiar BD (.db)");
         btnOpen.addActionListener(e -> chooseDatabaseFile());
 
-        JButton btnReset = UITheme.createSecondaryButton("⚠️ Restaurar Datos Semilla");
+        JButton btnReset = UITheme.createSecondaryButton("🗑️ Limpiar Base de Datos");
         btnReset.addActionListener(e -> resetDatabase());
 
         JButton btnScript = UITheme.createSecondaryButton("📜 Ver Esquema DDL");
         btnScript.addActionListener(e -> showSqlScriptDialog());
 
+        headerButtons.add(btnConfig);
         headerButtons.add(btnOpen);
         headerButtons.add(btnReset);
         headerButtons.add(btnScript);
@@ -242,14 +246,14 @@ public class DatabasePanel extends JPanel {
 
     private void resetDatabase() {
         int confirm = JOptionPane.showConfirmDialog(this,
-                "¿Deseas restaurar la base de datos SQLite con los datos semilla iniciales?\n" +
-                "Esto re-creará las tablas y restaurará los productos, clientes y torneos demo.",
-                "Confirmar Restauración", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                "¿Deseas reiniciar la base de datos SQLite y vaciar todas las tablas?\n" +
+                "Esto re-creará las tablas completamente vacías sin ningún registro.",
+                "Confirmar Limpieza de BD", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
 
         if (confirm == JOptionPane.YES_OPTION) {
             try {
                 db.resetDatabase();
-                JOptionPane.showMessageDialog(this, "Base de datos restaurada correctamente.", "Éxito", JOptionPane.INFORMATION_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Base de datos limpiada correctamente. Todas las tablas están vacías.", "Éxito", JOptionPane.INFORMATION_MESSAGE);
                 refreshPanel();
                 if (onStatusChange != null) onStatusChange.run();
             } catch (Exception ex) {
@@ -273,6 +277,113 @@ public class DatabasePanel extends JPanel {
         }
 
         dlg.add(new JScrollPane(ta));
+        dlg.setVisible(true);
+    }
+
+    private void showConfigDialog() {
+        JDialog dlg = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Configuración de Conexión de Base de Datos", true);
+        dlg.setSize(520, 420);
+        dlg.setLocationRelativeTo(this);
+        dlg.setLayout(new BorderLayout(12, 12));
+
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setBorder(new EmptyBorder(16, 20, 16, 20));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(6, 6, 6, 6);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        JComboBox<String> cmbType = new JComboBox<>(new String[]{"MariaDB (Remoto - Raspberry Pi)", "SQLite (Local)"});
+        if (!db.isMariaDb()) {
+            cmbType.setSelectedIndex(1);
+        }
+
+        JTextField txtHost = new JTextField(db.getHost());
+        JTextField txtPort = new JTextField(String.valueOf(db.getPort()));
+        JTextField txtDbName = new JTextField(db.getDbName());
+        JTextField txtUser = new JTextField(db.getUser());
+        JPasswordField txtPass = new JPasswordField(db.getPassword());
+        JTextField txtSqlitePath = new JTextField(db.getSqlitePath());
+
+        Runnable toggleFields = () -> {
+            boolean isM = cmbType.getSelectedIndex() == 0;
+            txtHost.setEnabled(isM);
+            txtPort.setEnabled(isM);
+            txtDbName.setEnabled(isM);
+            txtUser.setEnabled(isM);
+            txtPass.setEnabled(isM);
+            txtSqlitePath.setEnabled(!isM);
+        };
+        cmbType.addActionListener(e -> toggleFields.run());
+        toggleFields.run();
+
+        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.35;
+        form.add(new JLabel("Motor / Modo:"), gbc);
+        gbc.gridx = 1; gbc.weightx = 0.65;
+        form.add(cmbType, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 1;
+        form.add(new JLabel("IP Host (Tailscale):"), gbc);
+        gbc.gridx = 1;
+        form.add(txtHost, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 2;
+        form.add(new JLabel("Puerto:"), gbc);
+        gbc.gridx = 1;
+        form.add(txtPort, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 3;
+        form.add(new JLabel("Nombre Base de Datos:"), gbc);
+        gbc.gridx = 1;
+        form.add(txtDbName, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 4;
+        form.add(new JLabel("Usuario MariaDB:"), gbc);
+        gbc.gridx = 1;
+        form.add(txtUser, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 5;
+        form.add(new JLabel("Contraseña:"), gbc);
+        gbc.gridx = 1;
+        form.add(txtPass, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 6;
+        form.add(new JLabel("Ruta SQLite (.db):"), gbc);
+        gbc.gridx = 1;
+        form.add(txtSqlitePath, gbc);
+
+        dlg.add(form, BorderLayout.CENTER);
+
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
+        JButton btnCancelar = UITheme.createSecondaryButton("Cancelar");
+        btnCancelar.addActionListener(e -> dlg.dispose());
+
+        JButton btnGuardar = UITheme.createPrimaryButton("💾 Guardar y Conectar");
+        btnGuardar.addActionListener(e -> {
+            String selectedType = cmbType.getSelectedIndex() == 0 ? "mariadb" : "sqlite";
+            String h = txtHost.getText().trim();
+            int p = 3306;
+            try { p = Integer.parseInt(txtPort.getText().trim()); } catch (Exception ignored) {}
+            String dbN = txtDbName.getText().trim();
+            String u = txtUser.getText().trim();
+            String pwd = new String(txtPass.getPassword()).trim();
+            String sqP = txtSqlitePath.getText().trim();
+
+            db.saveProperties(selectedType, h, p, dbN, u, pwd, sqP);
+            boolean ok = db.initConnectionFromConfig();
+            if (ok) {
+                JOptionPane.showMessageDialog(dlg, "¡Conexión establecida correctamente!\n" + db.getConnectionStatus(), "Conexión Exitosa", JOptionPane.INFORMATION_MESSAGE);
+                dlg.dispose();
+                refreshPanel();
+                if (onStatusChange != null) onStatusChange.run();
+            } else {
+                JOptionPane.showMessageDialog(dlg, "Fallo al conectar:\n" + db.getConnectionStatus() + "\n\nRevisa la IP de Tailscale, el puerto 3306 y las credenciales.", "Error de Conexión", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        btnPanel.add(btnCancelar);
+        btnPanel.add(btnGuardar);
+        dlg.add(btnPanel, BorderLayout.SOUTH);
+
         dlg.setVisible(true);
     }
 }

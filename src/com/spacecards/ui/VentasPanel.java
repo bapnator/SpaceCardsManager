@@ -302,6 +302,10 @@ public class VentasPanel extends JPanel {
 
         ClienteItem cliItem = (ClienteItem) cmbClientes.getSelectedItem();
         Usuario usr = (Usuario) cmbUsuarios.getSelectedItem();
+        if (usr == null) {
+            JOptionPane.showMessageDialog(this, "Debe registrar y seleccionar al menos un usuario/empleado activo para realizar la venta.", "Atención", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
         String metodo = (String) cmbMetodoPago.getSelectedItem();
 
         Venta venta = new Venta();
@@ -356,6 +360,17 @@ public class VentasPanel extends JPanel {
         for (Usuario u : db.getUsuarios()) {
             if (u.isActivo()) {
                 cmbUsuarios.addItem(u);
+            }
+        }
+
+        Usuario current = SessionManager.getInstance().getCurrentUser();
+        if (current != null && current.getIdUsuario() > 0) {
+            for (int i = 0; i < cmbUsuarios.getItemCount(); i++) {
+                Usuario u = cmbUsuarios.getItemAt(i);
+                if (u.getIdUsuario() == current.getIdUsuario()) {
+                    cmbUsuarios.setSelectedIndex(i);
+                    break;
+                }
             }
         }
     }

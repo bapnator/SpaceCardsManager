@@ -196,8 +196,19 @@ public class UsuariosPanel extends JPanel {
                 u.setActivo(chkActivo.isSelected());
                 db.updateUsuario(u);
             } else {
-                Usuario nuevo = new Usuario(0, nom, ape, (String) cmbRoles.getSelectedItem(), hor, chkActivo.isSelected());
+                String rolSeleccionado = (String) cmbRoles.getSelectedItem();
+                Usuario nuevo = new Usuario(0, nom, ape, rolSeleccionado, hor, chkActivo.isSelected());
                 db.addUsuario(nuevo);
+
+                if (SessionManager.getInstance().isAshBridgeUser() && "Administrador".equals(rolSeleccionado)) {
+                    JOptionPane.showMessageDialog(dialog,
+                            "🎉 ¡Primer Administrador Registrado con Éxito!\n\n" +
+                            "Nombre: " + nuevo.getNombreCompleto() + "\n" +
+                            "Rol: Administrador\n\n" +
+                            "A partir de este momento, el sistema ya cuenta con un Administrador oficial.\n" +
+                            "Al cerrar esta sesión o cambiar de usuario, la cuenta puente 'Ash' quedará bloqueada.",
+                            "Administrador Configurado", JOptionPane.INFORMATION_MESSAGE);
+                }
             }
 
             dialog.dispose();

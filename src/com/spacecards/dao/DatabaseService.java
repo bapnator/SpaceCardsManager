@@ -21,13 +21,23 @@ public class DatabaseService {
     private static final String DEFAULT_DB_FILE = "spacecards.db";
     private String currentDbPath = DEFAULT_DB_FILE;
     private Connection connection;
-    private String connectionStatus = "Inicializando SQLite...";
+    private String connectionStatus = "Inicializando Base de Datos...";
+
+    private String dbType = "mariadb"; // "mariadb" o "sqlite"
+    private String host = "100.x.y.z";
+    private int port = 3306;
+    private String dbName = "spacecards";
+    private String user = "spaceuser";
+    private String password = "spacepassword123";
+    private String sqlitePath = DEFAULT_DB_FILE;
+    private final Properties dbProps = new Properties();
 
     private final DateTimeFormatter dtfDateTime = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private final DateTimeFormatter dtfDate = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     private DatabaseService() {
-        initConnection(DEFAULT_DB_FILE);
+        loadProperties();
+        initConnectionFromConfig();
     }
 
     public static synchronized DatabaseService getInstance() {
@@ -37,17 +47,108 @@ public class DatabaseService {
         return instance;
     }
 
+    public synchronized void loadProperties() {
+        File propFile = new File("database.properties");
+        if (propFile.exists()) {
+            try (java.io.FileInputStream fis = new java.io.FileInputStream(propFile)) {
+                dbProps.load(fis);
+                dbType = dbProps.getProperty("db.type", "mariadb").trim().toLowerCase();
+                host = dbProps.getProperty("db.host", "100.x.y.z").trim();
+                try {
+                    port = Integer.parseInt(dbProps.getProperty("db.port", "3306").trim());
+                } catch (NumberFormatException ignored) {
+                    port = 3306;
+                }
+                dbName = dbProps.getProperty("db.name", "spacecards").trim();
+                user = dbProps.getProperty("db.user", "spaceuser").trim();
+                password = dbProps.getProperty("db.password", "spacepassword123").trim();
+                sqlitePath = dbProps.getProperty("db.sqlite.file", DEFAULT_DB_FILE).trim();
+            } catch (Exception ex) {
+                System.err.println("Error al cargar database.properties: " + ex.getMessage());
+            }
+        }
+    }
+
+    public synchronized void saveProperties(String type, String h, int p, String db, String u, String pwd, String sqPath) {
+        this.dbType = type.trim().toLowerCase();
+        this.host = h.trim();
+        this.port = p;
+        this.dbName = db.trim();
+        this.user = u.trim();
+        this.password = pwd.trim();
+        this.sqlitePath = sqPath.trim();
+
+        dbProps.setProperty("db.type", this.dbType);
+        dbProps.setProperty("db.host", this.host);
+        dbProps.setProperty("db.port", String.valueOf(this.port));
+        dbProps.setProperty("db.name", this.dbName);
+        dbProps.setProperty("db.user", this.user);
+        dbProps.setProperty("db.password", this.password);
+        dbProps.setProperty("db.sqlite.file", this.sqlitePath);
+
+        try (java.io.FileOutputStream fos = new java.io.FileOutputStream("database.properties")) {
+            dbProps.store(fos, "Configuracion de Base de Datos - Space Cards Manager");
+        } catch (Exception ex) {
+            System.err.println("Error al guardar database.properties: " + ex.getMessage());
+        }
+    }
+
+    public synchronized boolean initConnectionFromConfig() {
+        if ("mariadb".equalsIgnoreCase(dbType)) {
+            return initMariaDbConnection(host, port, dbName, user, password);
+        } else {
+            return initConnection(sqlitePath);
+        }
+    }
+
     /**
-     * Inicializa la conexión SQLite y crea las tablas si no existen.
+     * Inicializa conexión remota con MariaDB (Raspberry Pi).
+     */
+    public synchronized boolean initMariaDbConnection(String host, int port, String dbName, String user, String password) {
+        this.dbType = "mariadb";
+        this.host = host;
+        this.port = port;
+        this.dbName = dbName;
+        this.user = user;
+        this.password = password;
+        try {
+            if (connection != null && !connection.isClosed()) {
+                connection.close();
+            }
+
+            try {
+                Class.forName("org.mariadb.jdbc.Driver");
+            } catch (ClassNotFoundException e) {
+                Class.forName("com.mysql.cj.jdbc.Driver");
+            }
+
+            String url = "jdbc:mariadb://" + host + ":" + port + "/" + dbName +
+                    "?permitMysqlScheme=true&autoReconnect=true&connectTimeout=6000&socketTimeout=15000";
+            this.connection = DriverManager.getConnection(url, user, password);
+
+            createTablesIfNotExist();
+
+            connectionStatus = "MariaDB Remoto Activo (" + host + ":" + port + " / " + dbName + ")";
+            return true;
+        } catch (Exception ex) {
+            connectionStatus = "Error de conexión MariaDB (" + host + "): " + ex.getMessage();
+            ex.printStackTrace();
+            return false;
+        }
+    }
+
+    /**
+     * Inicializa la conexión SQLite local y crea las tablas si no existen.
      */
     public synchronized boolean initConnection(String dbPath) {
+        this.dbType = "sqlite";
+        this.currentDbPath = dbPath;
         try {
             if (connection != null && !connection.isClosed()) {
                 connection.close();
             }
 
             Class.forName("org.sqlite.JDBC");
-            this.currentDbPath = dbPath;
             this.connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
 
             try (Statement st = connection.createStatement()) {
@@ -56,16 +157,11 @@ public class DatabaseService {
 
             createTablesIfNotExist();
 
-            // Si no hay productos, poblar datos semilla
-            if (isTableEmpty("producto")) {
-                seedSampleData();
-            }
-
             File f = new File(dbPath);
             connectionStatus = "SQLite 3 Activo (" + f.getName() + " - " + (f.length() / 1024) + " KB)";
             return true;
         } catch (Exception ex) {
-            connectionStatus = "Error de conexión: " + ex.getMessage();
+            connectionStatus = "Error de conexión SQLite: " + ex.getMessage();
             ex.printStackTrace();
             return false;
         }
@@ -73,9 +169,15 @@ public class DatabaseService {
 
     private synchronized Connection getConnection() throws SQLException {
         if (connection == null || connection.isClosed()) {
-            connection = DriverManager.getConnection("jdbc:sqlite:" + currentDbPath);
-            try (Statement st = connection.createStatement()) {
-                st.execute("PRAGMA foreign_keys = ON;");
+            if ("mariadb".equalsIgnoreCase(dbType)) {
+                String url = "jdbc:mariadb://" + host + ":" + port + "/" + dbName +
+                        "?permitMysqlScheme=true&autoReconnect=true&connectTimeout=6000&socketTimeout=15000";
+                connection = DriverManager.getConnection(url, user, password);
+            } else {
+                connection = DriverManager.getConnection("jdbc:sqlite:" + currentDbPath);
+                try (Statement st = connection.createStatement()) {
+                    st.execute("PRAGMA foreign_keys = ON;");
+                }
             }
         }
         return connection;
@@ -83,96 +185,189 @@ public class DatabaseService {
 
     private void createTablesIfNotExist() throws SQLException {
         try (Statement st = getConnection().createStatement()) {
-            // TABLA: CLIENTE
-            st.execute("CREATE TABLE IF NOT EXISTS cliente (" +
-                    "id_cliente INTEGER PRIMARY KEY AUTOINCREMENT," +
-                    "nombre VARCHAR(50) NOT NULL," +
-                    "apellido VARCHAR(50) NOT NULL," +
-                    "correo_electronico VARCHAR(100) NOT NULL UNIQUE," +
-                    "telefono VARCHAR(20) NOT NULL," +
-                    "fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP);");
+            if ("mariadb".equalsIgnoreCase(dbType)) {
+                // TABLA: CLIENTE (MariaDB)
+                st.execute("CREATE TABLE IF NOT EXISTS cliente (" +
+                        "id_cliente INT AUTO_INCREMENT PRIMARY KEY," +
+                        "nombre VARCHAR(50) NOT NULL," +
+                        "apellido VARCHAR(50) NOT NULL," +
+                        "correo_electronico VARCHAR(100) NOT NULL UNIQUE," +
+                        "telefono VARCHAR(20) NOT NULL," +
+                        "fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB;");
 
-            // TABLA: USUARIO
-            st.execute("CREATE TABLE IF NOT EXISTS usuario (" +
-                    "id_usuario INTEGER PRIMARY KEY AUTOINCREMENT," +
-                    "nombre VARCHAR(50) NOT NULL," +
-                    "apellido VARCHAR(50) NOT NULL," +
-                    "rol VARCHAR(30) NOT NULL CHECK (rol IN ('Administrador', 'Vendedor', 'Organizador_Torneos'))," +
-                    "horario VARCHAR(50) NOT NULL," +
-                    "activo BOOLEAN DEFAULT 1);");
+                // TABLA: USUARIO (MariaDB)
+                st.execute("CREATE TABLE IF NOT EXISTS usuario (" +
+                        "id_usuario INT AUTO_INCREMENT PRIMARY KEY," +
+                        "nombre VARCHAR(50) NOT NULL," +
+                        "apellido VARCHAR(50) NOT NULL," +
+                        "rol VARCHAR(30) NOT NULL CHECK (rol IN ('Administrador', 'Vendedor', 'Organizador_Torneos'))," +
+                        "horario VARCHAR(50) NOT NULL," +
+                        "activo BOOLEAN DEFAULT 1) ENGINE=InnoDB;");
 
-            // TABLA: PRODUCTO
-            st.execute("CREATE TABLE IF NOT EXISTS producto (" +
-                    "id_producto INTEGER PRIMARY KEY AUTOINCREMENT," +
-                    "codigo_barras VARCHAR(50) UNIQUE," +
-                    "nombre VARCHAR(100) NOT NULL," +
-                    "descripcion TEXT," +
-                    "categoria VARCHAR(50) NOT NULL," +
-                    "juego_tcg VARCHAR(50) DEFAULT 'Pokémon'," +
-                    "precio_unitario DECIMAL(10,2) NOT NULL CHECK (precio_unitario >= 0)," +
-                    "stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0));");
+                // TABLA: PRODUCTO (MariaDB)
+                st.execute("CREATE TABLE IF NOT EXISTS producto (" +
+                        "id_producto INT AUTO_INCREMENT PRIMARY KEY," +
+                        "codigo_barras VARCHAR(50) UNIQUE," +
+                        "nombre VARCHAR(100) NOT NULL," +
+                        "descripcion TEXT," +
+                        "categoria VARCHAR(50) NOT NULL," +
+                        "juego_tcg VARCHAR(50) DEFAULT 'Pokémon'," +
+                        "precio_unitario DECIMAL(10,2) NOT NULL CHECK (precio_unitario >= 0)," +
+                        "stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0)) ENGINE=InnoDB;");
 
-            // TABLA: VENTA
-            st.execute("CREATE TABLE IF NOT EXISTS venta (" +
-                    "id_venta INTEGER PRIMARY KEY AUTOINCREMENT," +
-                    "id_cliente INT NULL," +
-                    "id_usuario INT NOT NULL," +
-                    "fecha_venta DATETIME DEFAULT CURRENT_TIMESTAMP," +
-                    "monto_total DECIMAL(10,2) NOT NULL DEFAULT 0.00," +
-                    "metodo_pago VARCHAR(30) NOT NULL CHECK (metodo_pago IN ('Efectivo', 'Tarjeta', 'Transferencia'))," +
-                    "FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente) ON DELETE SET NULL," +
-                    "FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario));");
+                // TABLA: VENTA (MariaDB)
+                st.execute("CREATE TABLE IF NOT EXISTS venta (" +
+                        "id_venta INT AUTO_INCREMENT PRIMARY KEY," +
+                        "id_cliente INT NULL," +
+                        "id_usuario INT NOT NULL," +
+                        "fecha_venta DATETIME DEFAULT CURRENT_TIMESTAMP," +
+                        "monto_total DECIMAL(10,2) NOT NULL DEFAULT 0.00," +
+                        "metodo_pago VARCHAR(30) NOT NULL CHECK (metodo_pago IN ('Efectivo', 'Tarjeta', 'Transferencia'))," +
+                        "FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente) ON DELETE SET NULL," +
+                        "FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario)) ENGINE=InnoDB;");
 
-            // TABLA: DETALLE_VENTA
-            st.execute("CREATE TABLE IF NOT EXISTS detalle_venta (" +
-                    "id_detalle INTEGER PRIMARY KEY AUTOINCREMENT," +
-                    "id_venta INT NOT NULL," +
-                    "id_producto INT NOT NULL," +
-                    "cantidad INT NOT NULL CHECK (cantidad > 0)," +
-                    "precio_historico DECIMAL(10,2) NOT NULL," +
-                    "subtotal DECIMAL(10,2) GENERATED ALWAYS AS (cantidad * precio_historico) STORED," +
-                    "FOREIGN KEY (id_venta) REFERENCES venta(id_venta) ON DELETE CASCADE," +
-                    "FOREIGN KEY (id_producto) REFERENCES producto(id_producto));");
+                // TABLA: DETALLE_VENTA (MariaDB)
+                st.execute("CREATE TABLE IF NOT EXISTS detalle_venta (" +
+                        "id_detalle INT AUTO_INCREMENT PRIMARY KEY," +
+                        "id_venta INT NOT NULL," +
+                        "id_producto INT NOT NULL," +
+                        "cantidad INT NOT NULL CHECK (cantidad > 0)," +
+                        "precio_historico DECIMAL(10,2) NOT NULL," +
+                        "subtotal DECIMAL(10,2) GENERATED ALWAYS AS (cantidad * precio_historico) STORED," +
+                        "FOREIGN KEY (id_venta) REFERENCES venta(id_venta) ON DELETE CASCADE," +
+                        "FOREIGN KEY (id_producto) REFERENCES producto(id_producto)) ENGINE=InnoDB;");
 
-            // TABLA: PREVENTA
-            st.execute("CREATE TABLE IF NOT EXISTS preventa (" +
-                    "id_preventa INTEGER PRIMARY KEY AUTOINCREMENT," +
-                    "id_cliente INT NOT NULL," +
-                    "id_usuario INT NOT NULL," +
-                    "id_producto INT NOT NULL," +
-                    "monto_anticipo DECIMAL(10,2) NOT NULL CHECK (monto_anticipo >= 0)," +
-                    "monto_total DECIMAL(10,2) NOT NULL CHECK (monto_total >= monto_anticipo)," +
-                    "fecha_solicitud DATETIME DEFAULT CURRENT_TIMESTAMP," +
-                    "fecha_estimada_entrega DATE NOT NULL," +
-                    "estado VARCHAR(20) DEFAULT 'Pendiente' CHECK (estado IN ('Pendiente', 'Entregado', 'Cancelado'))," +
-                    "FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente)," +
-                    "FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario)," +
-                    "FOREIGN KEY (id_producto) REFERENCES producto(id_producto));");
+                // TABLA: PREVENTA (MariaDB)
+                st.execute("CREATE TABLE IF NOT EXISTS preventa (" +
+                        "id_preventa INT AUTO_INCREMENT PRIMARY KEY," +
+                        "id_cliente INT NOT NULL," +
+                        "id_usuario INT NOT NULL," +
+                        "id_producto INT NOT NULL," +
+                        "monto_anticipo DECIMAL(10,2) NOT NULL CHECK (monto_anticipo >= 0)," +
+                        "monto_total DECIMAL(10,2) NOT NULL CHECK (monto_total >= monto_anticipo)," +
+                        "fecha_solicitud DATETIME DEFAULT CURRENT_TIMESTAMP," +
+                        "fecha_estimada_entrega DATE NOT NULL," +
+                        "estado VARCHAR(20) DEFAULT 'Pendiente' CHECK (estado IN ('Pendiente', 'Entregado', 'Cancelado'))," +
+                        "FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente)," +
+                        "FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario)," +
+                        "FOREIGN KEY (id_producto) REFERENCES producto(id_producto)) ENGINE=InnoDB;");
 
-            // TABLA: TORNEO
-            st.execute("CREATE TABLE IF NOT EXISTS torneo (" +
-                    "id_torneo INTEGER PRIMARY KEY AUTOINCREMENT," +
-                    "id_organizador INT NOT NULL," +
-                    "nombre_torneo VARCHAR(100) NOT NULL," +
-                    "juego_tcg VARCHAR(50) NOT NULL," +
-                    "fecha_evento DATETIME NOT NULL," +
-                    "costo_inscripcion DECIMAL(10,2) NOT NULL CHECK (costo_inscripcion >= 0)," +
-                    "cupo_maximo INT NOT NULL CHECK (cupo_maximo > 0)," +
-                    "estado VARCHAR(20) DEFAULT 'Programado' CHECK (estado IN ('Programado', 'En Curso', 'Finalizado', 'Cancelado'))," +
-                    "FOREIGN KEY (id_organizador) REFERENCES usuario(id_usuario));");
+                // TABLA: TORNEO (MariaDB)
+                st.execute("CREATE TABLE IF NOT EXISTS torneo (" +
+                        "id_torneo INT AUTO_INCREMENT PRIMARY KEY," +
+                        "id_organizador INT NOT NULL," +
+                        "nombre_torneo VARCHAR(100) NOT NULL," +
+                        "juego_tcg VARCHAR(50) NOT NULL," +
+                        "fecha_evento DATETIME NOT NULL," +
+                        "costo_inscripcion DECIMAL(10,2) NOT NULL CHECK (costo_inscripcion >= 0)," +
+                        "cupo_maximo INT NOT NULL CHECK (cupo_maximo > 0)," +
+                        "estado VARCHAR(20) DEFAULT 'Programado' CHECK (estado IN ('Programado', 'En Curso', 'Finalizado', 'Cancelado'))," +
+                        "FOREIGN KEY (id_organizador) REFERENCES usuario(id_usuario)) ENGINE=InnoDB;");
 
-            // TABLA: PARTICIPANTE_TORNEO
-            st.execute("CREATE TABLE IF NOT EXISTS participante_torneo (" +
-                    "id_inscripcion INTEGER PRIMARY KEY AUTOINCREMENT," +
-                    "id_torneo INT NOT NULL," +
-                    "id_cliente INT NOT NULL," +
-                    "id_jugador_tcg VARCHAR(50)," +
-                    "fecha_inscripcion DATETIME DEFAULT CURRENT_TIMESTAMP," +
-                    "pago_confirmado BOOLEAN DEFAULT 0," +
-                    "posicion_final INT NULL," +
-                    "FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo) ON DELETE CASCADE," +
-                    "FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente)," +
-                    "CONSTRAINT unique_jugador_torneo UNIQUE (id_torneo, id_cliente));");
+                // TABLA: PARTICIPANTE_TORNEO (MariaDB)
+                st.execute("CREATE TABLE IF NOT EXISTS participante_torneo (" +
+                        "id_inscripcion INT AUTO_INCREMENT PRIMARY KEY," +
+                        "id_torneo INT NOT NULL," +
+                        "id_cliente INT NOT NULL," +
+                        "id_jugador_tcg VARCHAR(50)," +
+                        "fecha_inscripcion DATETIME DEFAULT CURRENT_TIMESTAMP," +
+                        "pago_confirmado BOOLEAN DEFAULT 0," +
+                        "posicion_final INT NULL," +
+                        "FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo) ON DELETE CASCADE," +
+                        "FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente)," +
+                        "CONSTRAINT unique_jugador_torneo UNIQUE (id_torneo, id_cliente)) ENGINE=InnoDB;");
+            } else {
+                // TABLA: CLIENTE (SQLite)
+                st.execute("CREATE TABLE IF NOT EXISTS cliente (" +
+                        "id_cliente INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "nombre VARCHAR(50) NOT NULL," +
+                        "apellido VARCHAR(50) NOT NULL," +
+                        "correo_electronico VARCHAR(100) NOT NULL UNIQUE," +
+                        "telefono VARCHAR(20) NOT NULL," +
+                        "fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP);");
+
+                // TABLA: USUARIO (SQLite)
+                st.execute("CREATE TABLE IF NOT EXISTS usuario (" +
+                        "id_usuario INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "nombre VARCHAR(50) NOT NULL," +
+                        "apellido VARCHAR(50) NOT NULL," +
+                        "rol VARCHAR(30) NOT NULL CHECK (rol IN ('Administrador', 'Vendedor', 'Organizador_Torneos'))," +
+                        "horario VARCHAR(50) NOT NULL," +
+                        "activo BOOLEAN DEFAULT 1);");
+
+                // TABLA: PRODUCTO (SQLite)
+                st.execute("CREATE TABLE IF NOT EXISTS producto (" +
+                        "id_producto INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "codigo_barras VARCHAR(50) UNIQUE," +
+                        "nombre VARCHAR(100) NOT NULL," +
+                        "descripcion TEXT," +
+                        "categoria VARCHAR(50) NOT NULL," +
+                        "juego_tcg VARCHAR(50) DEFAULT 'Pokémon'," +
+                        "precio_unitario DECIMAL(10,2) NOT NULL CHECK (precio_unitario >= 0)," +
+                        "stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0));");
+
+                // TABLA: VENTA (SQLite)
+                st.execute("CREATE TABLE IF NOT EXISTS venta (" +
+                        "id_venta INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "id_cliente INT NULL," +
+                        "id_usuario INT NOT NULL," +
+                        "fecha_venta DATETIME DEFAULT CURRENT_TIMESTAMP," +
+                        "monto_total DECIMAL(10,2) NOT NULL DEFAULT 0.00," +
+                        "metodo_pago VARCHAR(30) NOT NULL CHECK (metodo_pago IN ('Efectivo', 'Tarjeta', 'Transferencia'))," +
+                        "FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente) ON DELETE SET NULL," +
+                        "FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario));");
+
+                // TABLA: DETALLE_VENTA (SQLite)
+                st.execute("CREATE TABLE IF NOT EXISTS detalle_venta (" +
+                        "id_detalle INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "id_venta INT NOT NULL," +
+                        "id_producto INT NOT NULL," +
+                        "cantidad INT NOT NULL CHECK (cantidad > 0)," +
+                        "precio_historico DECIMAL(10,2) NOT NULL," +
+                        "subtotal DECIMAL(10,2) GENERATED ALWAYS AS (cantidad * precio_historico) STORED," +
+                        "FOREIGN KEY (id_venta) REFERENCES venta(id_venta) ON DELETE CASCADE," +
+                        "FOREIGN KEY (id_producto) REFERENCES producto(id_producto));");
+
+                // TABLA: PREVENTA (SQLite)
+                st.execute("CREATE TABLE IF NOT EXISTS preventa (" +
+                        "id_preventa INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "id_cliente INT NOT NULL," +
+                        "id_usuario INT NOT NULL," +
+                        "id_producto INT NOT NULL," +
+                        "monto_anticipo DECIMAL(10,2) NOT NULL CHECK (monto_anticipo >= 0)," +
+                        "monto_total DECIMAL(10,2) NOT NULL CHECK (monto_total >= monto_anticipo)," +
+                        "fecha_solicitud DATETIME DEFAULT CURRENT_TIMESTAMP," +
+                        "fecha_estimada_entrega DATE NOT NULL," +
+                        "estado VARCHAR(20) DEFAULT 'Pendiente' CHECK (estado IN ('Pendiente', 'Entregado', 'Cancelado'))," +
+                        "FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente)," +
+                        "FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario)," +
+                        "FOREIGN KEY (id_producto) REFERENCES producto(id_producto));");
+
+                // TABLA: TORNEO (SQLite)
+                st.execute("CREATE TABLE IF NOT EXISTS torneo (" +
+                        "id_torneo INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "id_organizador INT NOT NULL," +
+                        "nombre_torneo VARCHAR(100) NOT NULL," +
+                        "juego_tcg VARCHAR(50) NOT NULL," +
+                        "fecha_evento DATETIME NOT NULL," +
+                        "costo_inscripcion DECIMAL(10,2) NOT NULL CHECK (costo_inscripcion >= 0)," +
+                        "cupo_maximo INT NOT NULL CHECK (cupo_maximo > 0)," +
+                        "estado VARCHAR(20) DEFAULT 'Programado' CHECK (estado IN ('Programado', 'En Curso', 'Finalizado', 'Cancelado'))," +
+                        "FOREIGN KEY (id_organizador) REFERENCES usuario(id_usuario));");
+
+                // TABLA: PARTICIPANTE_TORNEO (SQLite)
+                st.execute("CREATE TABLE IF NOT EXISTS participante_torneo (" +
+                        "id_inscripcion INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "id_torneo INT NOT NULL," +
+                        "id_cliente INT NOT NULL," +
+                        "id_jugador_tcg VARCHAR(50)," +
+                        "fecha_inscripcion DATETIME DEFAULT CURRENT_TIMESTAMP," +
+                        "pago_confirmado BOOLEAN DEFAULT 0," +
+                        "posicion_final INT NULL," +
+                        "FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo) ON DELETE CASCADE," +
+                        "FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente)," +
+                        "CONSTRAINT unique_jugador_torneo UNIQUE (id_torneo, id_cliente));");
+            }
         }
     }
 
@@ -425,6 +620,23 @@ public class DatabaseService {
         } catch (SQLException ex) {
             throw new RuntimeException("Error al eliminar usuario: " + ex.getMessage(), ex);
         }
+    }
+
+    public static final Usuario ASH_BRIDGE_USER = new Usuario(
+            -1, "Ash", "Ketchum", "Usuario Puente", "Turno Especial (Configuración Inicial)", true
+    );
+
+    public synchronized boolean hasActiveAdministrator() {
+        String sql = "SELECT COUNT(*) FROM usuario WHERE rol = 'Administrador' AND activo = 1";
+        try (Statement st = getConnection().createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            if (rs.next()) {
+                return rs.getInt(1) > 0;
+            }
+        } catch (Exception e) {
+            System.err.println("Error verificando administradores: " + e.getMessage());
+        }
+        return false;
     }
 
     public synchronized Usuario findUsuarioById(int idUsuario) {
@@ -1045,26 +1257,38 @@ public class DatabaseService {
 
     public synchronized void resetDatabase() throws SQLException {
         try (Statement st = getConnection().createStatement()) {
-            st.execute("PRAGMA foreign_keys = OFF;");
-            st.execute("DROP TABLE IF EXISTS participante_torneo;");
-            st.execute("DROP TABLE IF EXISTS torneo;");
-            st.execute("DROP TABLE IF EXISTS preventa;");
-            st.execute("DROP TABLE IF EXISTS detalle_venta;");
-            st.execute("DROP TABLE IF EXISTS venta;");
-            st.execute("DROP TABLE IF EXISTS producto;");
-            st.execute("DROP TABLE IF EXISTS usuario;");
-            st.execute("DROP TABLE IF EXISTS cliente;");
-            st.execute("PRAGMA foreign_keys = ON;");
+            if ("mariadb".equalsIgnoreCase(dbType)) {
+                st.execute("SET FOREIGN_KEY_CHECKS = 0;");
+                st.execute("DROP TABLE IF EXISTS participante_torneo;");
+                st.execute("DROP TABLE IF EXISTS torneo;");
+                st.execute("DROP TABLE IF EXISTS preventa;");
+                st.execute("DROP TABLE IF EXISTS detalle_venta;");
+                st.execute("DROP TABLE IF EXISTS venta;");
+                st.execute("DROP TABLE IF EXISTS producto;");
+                st.execute("DROP TABLE IF EXISTS usuario;");
+                st.execute("DROP TABLE IF EXISTS cliente;");
+                st.execute("SET FOREIGN_KEY_CHECKS = 1;");
+            } else {
+                st.execute("PRAGMA foreign_keys = OFF;");
+                st.execute("DROP TABLE IF EXISTS participante_torneo;");
+                st.execute("DROP TABLE IF EXISTS torneo;");
+                st.execute("DROP TABLE IF EXISTS preventa;");
+                st.execute("DROP TABLE IF EXISTS detalle_venta;");
+                st.execute("DROP TABLE IF EXISTS venta;");
+                st.execute("DROP TABLE IF EXISTS producto;");
+                st.execute("DROP TABLE IF EXISTS usuario;");
+                st.execute("DROP TABLE IF EXISTS cliente;");
+                st.execute("PRAGMA foreign_keys = ON;");
+            }
         }
         createTablesIfNotExist();
-        seedSampleData();
     }
 
     public synchronized QueryResult executeCustomQuery(String sql) throws Exception {
         sql = sql.trim();
         QueryResult qr = new QueryResult();
         try (Statement st = getConnection().createStatement()) {
-            if (sql.toLowerCase().startsWith("select") || sql.toLowerCase().startsWith("pragma")) {
+            if (sql.toLowerCase().startsWith("select") || sql.toLowerCase().startsWith("pragma") || sql.toLowerCase().startsWith("show")) {
                 try (ResultSet rs = st.executeQuery(sql)) {
                     ResultSetMetaData md = rs.getMetaData();
                     int cols = md.getColumnCount();
@@ -1095,16 +1319,59 @@ public class DatabaseService {
     }
 
     public String getCurrentDbPath() {
+        if ("mariadb".equalsIgnoreCase(dbType)) {
+            return "jdbc:mariadb://" + host + ":" + port + "/" + dbName + " (Usuario: " + user + ")";
+        }
         return new File(currentDbPath).getAbsolutePath();
     }
 
     public String getConnectionStatus() {
+        if ("mariadb".equalsIgnoreCase(dbType)) {
+            try {
+                if (connection != null && !connection.isClosed()) {
+                    return "MariaDB Remoto Activo (" + host + ":" + port + " / " + dbName + ")";
+                }
+            } catch (Exception ignored) {}
+            return connectionStatus;
+        }
         File f = new File(currentDbPath);
         if (f.exists()) {
             long kb = f.length() / 1024;
             return "SQLite 3 Activo (" + f.getName() + " - " + (kb > 0 ? kb + " KB" : f.length() + " bytes") + ")";
         }
         return connectionStatus;
+    }
+
+    public boolean isMariaDb() {
+        return "mariadb".equalsIgnoreCase(dbType);
+    }
+
+    public String getDbType() {
+        return dbType;
+    }
+
+    public String getHost() {
+        return host;
+    }
+
+    public int getPort() {
+        return port;
+    }
+
+    public String getDbName() {
+        return dbName;
+    }
+
+    public String getUser() {
+        return user;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public String getSqlitePath() {
+        return sqlitePath;
     }
 
     // =========================================================================

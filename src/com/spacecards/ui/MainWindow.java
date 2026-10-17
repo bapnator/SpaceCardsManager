@@ -2,6 +2,7 @@ package com.spacecards.ui;
 
 import com.formdev.flatlaf.FlatDarkLaf;
 import com.spacecards.dao.DatabaseService;
+import com.spacecards.model.Usuario;
 
 import javax.swing.*;
 import java.awt.*;
@@ -21,7 +22,7 @@ public class MainWindow extends JFrame {
     private DatabasePanel databasePanel;
 
     public MainWindow() {
-        setTitle("Space Cards Manager - TCG Store [Java 24 + SQLite]");
+        setTitle("Space Cards Manager - TCG Store [MariaDB + Tailscale]");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1240, 800);
         setMinimumSize(new Dimension(1050, 680));
@@ -56,14 +57,17 @@ public class MainWindow extends JFrame {
         cardsContainer.add(usuariosPanel, "USUARIOS");
         cardsContainer.add(databasePanel, "DATABASE");
 
-        // Barra lateral
-        sidebarPanel = new SidebarPanel(cardName -> {
-            cardLayout.show(cardsContainer, cardName);
-            refreshAllPanels();
-            if ("DATABASE".equals(cardName) && databasePanel != null) {
-                databasePanel.refreshPanel();
-            }
-        });
+        // Barra lateral con soporte de navegación y cambio de usuario
+        sidebarPanel = new SidebarPanel(
+            cardName -> {
+                cardLayout.show(cardsContainer, cardName);
+                refreshAllPanels();
+                if ("DATABASE".equals(cardName) && databasePanel != null) {
+                    databasePanel.refreshPanel();
+                }
+            },
+            this::promptLogin
+        );
 
         // Contenedor principal
         JPanel rootPanel = new JPanel(new BorderLayout());
@@ -71,6 +75,40 @@ public class MainWindow extends JFrame {
         rootPanel.add(cardsContainer, BorderLayout.CENTER);
 
         setContentPane(rootPanel);
+    }
+
+    public void promptLogin() {
+        LoginDialog dlg = new LoginDialog(this);
+        dlg.setVisible(true);
+
+        Usuario user = dlg.getSelectedUser();
+        if (user != null) {
+            SessionManager.getInstance().setCurrentUser(user);
+            sidebarPanel.setCurrentUser(user);
+
+            if (SessionManager.getInstance().isAshBridgeUser()) {
+                // Modo Usuario Puente: Redirigir a Personal / Staff
+                cardLayout.show(cardsContainer, "USUARIOS");
+                sidebarPanel.setActiveNav("USUARIOS");
+                refreshAllPanels();
+                JOptionPane.showMessageDialog(this,
+                        "¡Bienvenido, Ash Ketchum!\n\n" +
+                        "Has ingresado como 'Usuario Puente' de configuración inicial.\n" +
+                        "Tu función es registrar al primer Administrador y empleados de la tienda.\n" +
+                        "En cuanto registres un Administrador, el acceso del usuario puente quedará bloqueado.",
+                        "Modo Usuario Puente", JOptionPane.INFORMATION_MESSAGE);
+            } else {
+                // Usuario normal del sistema
+                cardLayout.show(cardsContainer, "DASHBOARD");
+                sidebarPanel.setActiveNav("DASHBOARD");
+                refreshAllPanels();
+            }
+        } else {
+            // Si no hay usuario activo, cerrar
+            if (SessionManager.getInstance().getCurrentUser() == null) {
+                System.exit(0);
+            }
+        }
     }
 
     private void refreshAllPanels() {
@@ -101,6 +139,7 @@ public class MainWindow extends JFrame {
         SwingUtilities.invokeLater(() -> {
             MainWindow window = new MainWindow();
             window.setVisible(true);
+            window.promptLogin();
         });
     }
 }
