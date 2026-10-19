@@ -80,7 +80,7 @@ public class TorneosPanel extends JPanel {
         // Card Torneos
         JPanel cardTorneos = UITheme.createCardPanel();
         cardTorneos.setLayout(new BorderLayout(8, 8));
-        JLabel lblTorneosTitle = new JLabel("🏆 Torneos Registrados (PantallaConsultarTorneo)");
+        JLabel lblTorneosTitle = new JLabel("Torneos Registrados (PantallaConsultarTorneo)");
         lblTorneosTitle.setFont(UITheme.FONT_SUBTITLE);
         cardTorneos.add(lblTorneosTitle, BorderLayout.NORTH);
 
@@ -107,7 +107,7 @@ public class TorneosPanel extends JPanel {
         partHeader.setOpaque(false);
         partHeader.add(lblSelectedTorneoTitle, BorderLayout.WEST);
 
-        JButton btnEliminarPart = UITheme.createSecondaryButton("🗑️ Cancelar Inscripción");
+        JButton btnEliminarPart = UITheme.createSecondaryButton("Cancelar Inscripción");
         btnEliminarPart.addActionListener(e -> cancelarInscripcionSeleccionada());
         partHeader.add(btnEliminarPart, BorderLayout.EAST);
 
@@ -176,7 +176,7 @@ public class TorneosPanel extends JPanel {
                     c != null ? c.getCorreoElectronico() : "-",
                     c != null ? c.getTelefono() : "-",
                     pt.getIdJugadorTcg() != null ? pt.getIdJugadorTcg() : "Sin ID TCG",
-                    pt.isPagoConfirmado() ? "✅ Confirmado" : "⏳ Pendiente",
+                    pt.isPagoConfirmado() ? "Confirmado" : "Pendiente",
                     pt.getFechaInscripcion().format(fmt)
             });
         }
@@ -262,7 +262,7 @@ public class TorneosPanel extends JPanel {
         dialog.add(form, BorderLayout.CENTER);
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton btnGuardar = UITheme.createPrimaryButton("💾 Registrar Torneo");
+        JButton btnGuardar = UITheme.createPrimaryButton("Registrar Torneo");
         btnGuardar.addActionListener(e -> {
             String nom = txtNombre.getText().trim();
             if (nom.isEmpty()) {
@@ -358,7 +358,7 @@ public class TorneosPanel extends JPanel {
         dialog.add(form, BorderLayout.CENTER);
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton btnInscribir = UITheme.createPrimaryButton("✅ Inscribir Participante");
+        JButton btnInscribir = UITheme.createPrimaryButton("Inscribir Participante");
         btnInscribir.addActionListener(e -> {
             Cliente cli = (Cliente) cmbCliente.getSelectedItem();
             if (cli == null) {

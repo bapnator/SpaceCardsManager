@@ -62,16 +62,16 @@ public class DatabasePanel extends JPanel {
         JPanel headerButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         headerButtons.setOpaque(false);
 
-        JButton btnConfig = UITheme.createSecondaryButton("⚙️ Conexión (MariaDB / SQLite)");
+        JButton btnConfig = UITheme.createSecondaryButton("Conexión (MariaDB / SQLite)");
         btnConfig.addActionListener(e -> showConfigDialog());
 
-        JButton btnOpen = UITheme.createSecondaryButton("📂 Cambiar BD (.db)");
+        JButton btnOpen = UITheme.createSecondaryButton("Cambiar BD (.db)");
         btnOpen.addActionListener(e -> chooseDatabaseFile());
 
-        JButton btnReset = UITheme.createSecondaryButton("🗑️ Limpiar Base de Datos");
+        JButton btnReset = UITheme.createSecondaryButton("Limpiar Base de Datos");
         btnReset.addActionListener(e -> resetDatabase());
 
-        JButton btnScript = UITheme.createSecondaryButton("📜 Ver Esquema DDL");
+        JButton btnScript = UITheme.createSecondaryButton("Ver Esquema DDL");
         btnScript.addActionListener(e -> showSqlScriptDialog());
 
         headerButtons.add(btnConfig);
@@ -116,7 +116,7 @@ public class DatabasePanel extends JPanel {
         JPanel consoleHeader = new JPanel(new BorderLayout(8, 8));
         consoleHeader.setOpaque(false);
 
-        JLabel lblConsoleTitle = new JLabel("⚡ Consola de Consultas SQL Directa");
+        JLabel lblConsoleTitle = new JLabel("Consola de Consultas SQL Directa");
         lblConsoleTitle.setFont(UITheme.FONT_SUBTITLE);
         consoleHeader.add(lblConsoleTitle, BorderLayout.WEST);
         consoleHeader.add(cmbQuickQueries, BorderLayout.EAST);
@@ -141,7 +141,7 @@ public class DatabasePanel extends JPanel {
         txtSql.setCaretColor(Color.WHITE);
         txtSql.setBorder(new EmptyBorder(8, 8, 8, 8));
 
-        JButton btnRunSql = UITheme.createPrimaryButton("▶️ Ejecutar SQL");
+        JButton btnRunSql = UITheme.createPrimaryButton("Ejecutar SQL");
         btnRunSql.setPreferredSize(new Dimension(140, 40));
         btnRunSql.addActionListener(e -> runQuery());
 
@@ -169,8 +169,8 @@ public class DatabasePanel extends JPanel {
     }
 
     public void refreshPanel() {
-        lblDbStatus.setText("🟢 " + db.getConnectionStatus() + " | Driver: org.sqlite.JDBC (SQLite 3)");
-        lblDbPath.setText("📁 Archivo activo: " + db.getCurrentDbPath());
+        lblDbStatus.setText("" + db.getConnectionStatus() + " | Driver: org.sqlite.JDBC (SQLite 3)");
+        lblDbPath.setText("Archivo activo: " + db.getCurrentDbPath());
 
         // Actualizar estadísticas de tablas
         pnlStats.removeAll();
@@ -222,7 +222,7 @@ public class DatabasePanel extends JPanel {
             refreshPanel();
             if (onStatusChange != null) onStatusChange.run();
         } catch (Exception ex) {
-            lblQueryStatus.setText("❌ Error SQL: " + ex.getMessage());
+            lblQueryStatus.setText("Error SQL: " + ex.getMessage());
             lblQueryStatus.setForeground(UITheme.COLOR_DANGER);
         }
     }
@@ -357,7 +357,7 @@ public class DatabasePanel extends JPanel {
         JButton btnCancelar = UITheme.createSecondaryButton("Cancelar");
         btnCancelar.addActionListener(e -> dlg.dispose());
 
-        JButton btnGuardar = UITheme.createPrimaryButton("💾 Guardar y Conectar");
+        JButton btnGuardar = UITheme.createPrimaryButton("Guardar y Conectar");
         btnGuardar.addActionListener(e -> {
             String selectedType = cmbType.getSelectedIndex() == 0 ? "mariadb" : "sqlite";
             String h = txtHost.getText().trim();

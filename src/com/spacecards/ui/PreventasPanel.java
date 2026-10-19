@@ -54,13 +54,13 @@ public class PreventasPanel extends JPanel {
         JPanel actionButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         actionButtons.setOpaque(false);
 
-        JButton btnNuevo = UITheme.createPrimaryButton("➕ Registrar Preventa");
+        JButton btnNuevo = UITheme.createPrimaryButton("Registrar Preventa");
         btnNuevo.addActionListener(e -> showPreventaDialog());
 
-        JButton btnEntregar = UITheme.createAccentButton("✅ Liquidar y Entregar");
+        JButton btnEntregar = UITheme.createAccentButton("Liquidar y Entregar");
         btnEntregar.addActionListener(e -> marcarEntregado());
 
-        JButton btnCancelar = UITheme.createSecondaryButton("❌ Cancelar");
+        JButton btnCancelar = UITheme.createSecondaryButton("Cancelar");
         btnCancelar.addActionListener(e -> cancelarPreventa());
 
         actionButtons.add(btnNuevo);
@@ -208,7 +208,7 @@ public class PreventasPanel extends JPanel {
         dialog.add(form, BorderLayout.CENTER);
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton btnGuardar = UITheme.createPrimaryButton("💾 Registrar Preventa");
+        JButton btnGuardar = UITheme.createPrimaryButton("Registrar Preventa");
         btnGuardar.addActionListener(e -> {
             Cliente cli = (Cliente) cmbCli.getSelectedItem();
             Usuario usr = (Usuario) cmbUsr.getSelectedItem();

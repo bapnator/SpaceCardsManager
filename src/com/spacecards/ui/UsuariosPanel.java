@@ -47,13 +47,13 @@ public class UsuariosPanel extends JPanel {
         JPanel actionButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         actionButtons.setOpaque(false);
 
-        JButton btnNuevo = UITheme.createPrimaryButton("➕ Registrar Usuario");
+        JButton btnNuevo = UITheme.createPrimaryButton("Registrar Usuario");
         btnNuevo.addActionListener(e -> showUsuarioDialog(null));
 
-        JButton btnEditar = UITheme.createSecondaryButton("✏️ Editar");
+        JButton btnEditar = UITheme.createSecondaryButton("Editar");
         btnEditar.addActionListener(e -> editSelectedUsuario());
 
-        JButton btnToggle = UITheme.createSecondaryButton("🔄 Activar / Desactivar");
+        JButton btnToggle = UITheme.createSecondaryButton("Activar / Desactivar");
         btnToggle.addActionListener(e -> toggleActivo());
 
         actionButtons.add(btnNuevo);
@@ -123,7 +123,7 @@ public class UsuariosPanel extends JPanel {
                         u.getApellido(),
                         u.getRol(),
                         u.getHorario(),
-                        u.isActivo() ? "🟢 Activo" : "🔴 Inactivo"
+                        u.isActivo() ? "Activo" : "Inactivo"
                 });
             }
         }
@@ -177,7 +177,7 @@ public class UsuariosPanel extends JPanel {
         dialog.add(form, BorderLayout.CENTER);
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton btnGuardar = UITheme.createPrimaryButton("💾 Guardar");
+        JButton btnGuardar = UITheme.createPrimaryButton("Guardar");
         btnGuardar.addActionListener(e -> {
             String nom = txtNombre.getText().trim();
             String ape = txtApellido.getText().trim();
