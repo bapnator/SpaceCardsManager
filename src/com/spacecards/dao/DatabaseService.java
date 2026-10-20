@@ -95,7 +95,12 @@ public class DatabaseService {
 
     public synchronized boolean initConnectionFromConfig() {
         if ("mariadb".equalsIgnoreCase(dbType)) {
-            return initMariaDbConnection(host, port, dbName, user, password);
+            boolean ok = initMariaDbConnection(host, port, dbName, user, password);
+            if (!ok) {
+                System.out.println("Aviso: No se pudo conectar a MariaDB remoto (" + host + "). Activando fallback a SQLite local...");
+                return initConnection(sqlitePath);
+            }
+            return true;
         } else {
             return initConnection(sqlitePath);
         }
@@ -123,10 +128,17 @@ public class DatabaseService {
             }
 
             String url = "jdbc:mariadb://" + host + ":" + port + "/" + dbName +
-                    "?permitMysqlScheme=true&autoReconnect=true&connectTimeout=6000&socketTimeout=15000";
+                    "?permitMysqlScheme=true&autoReconnect=true&connectTimeout=4000&socketTimeout=10000";
             this.connection = DriverManager.getConnection(url, user, password);
 
             createTablesIfNotExist();
+
+            if (isTableEmpty("franquicia")) {
+                seedFranquicias();
+            }
+            if (isTableEmpty("producto")) {
+                seedSampleData();
+            }
 
             connectionStatus = "MariaDB Remoto Activo (" + host + ":" + port + " / " + dbName + ")";
             return true;
@@ -156,6 +168,13 @@ public class DatabaseService {
             }
 
             createTablesIfNotExist();
+
+            if (isTableEmpty("franquicia")) {
+                seedFranquicias();
+            }
+            if (isTableEmpty("producto")) {
+                seedSampleData();
+            }
 
             File f = new File(dbPath);
             connectionStatus = "SQLite 3 Activo (" + f.getName() + " - " + (f.length() / 1024) + " KB)";
@@ -276,6 +295,15 @@ public class DatabaseService {
                         "FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo) ON DELETE CASCADE," +
                         "FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente)," +
                         "CONSTRAINT unique_jugador_torneo UNIQUE (id_torneo, id_cliente)) ENGINE=InnoDB;");
+
+                // TABLA: FRANQUICIA (MariaDB)
+                st.execute("CREATE TABLE IF NOT EXISTS franquicia (" +
+                        "id_franquicia INT AUTO_INCREMENT PRIMARY KEY," +
+                        "nombre VARCHAR(50) NOT NULL UNIQUE," +
+                        "fabricante VARCHAR(50)," +
+                        "descripcion TEXT," +
+                        "activo BOOLEAN DEFAULT 1," +
+                        "fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB;");
             } else {
                 // TABLA: CLIENTE (SQLite)
                 st.execute("CREATE TABLE IF NOT EXISTS cliente (" +
@@ -367,6 +395,15 @@ public class DatabaseService {
                         "FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo) ON DELETE CASCADE," +
                         "FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente)," +
                         "CONSTRAINT unique_jugador_torneo UNIQUE (id_torneo, id_cliente));");
+
+                // TABLA: FRANQUICIA (SQLite)
+                st.execute("CREATE TABLE IF NOT EXISTS franquicia (" +
+                        "id_franquicia INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "nombre VARCHAR(50) NOT NULL UNIQUE," +
+                        "fabricante VARCHAR(50)," +
+                        "descripcion TEXT," +
+                        "activo BOOLEAN DEFAULT 1," +
+                        "fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP);");
             }
         }
     }
@@ -458,6 +495,23 @@ public class DatabaseService {
 
         } catch (Exception ex) {
             System.err.println("Aviso al sembrar datos: " + ex.getMessage());
+        }
+    }
+
+    /**
+     * Registra las franquicias TCG oficiales iniciales.
+     */
+    public synchronized void seedFranquicias() {
+        try {
+            addFranquicia(new Franquicia(0, "Pokémon", "Nintendo / The Pokémon Company", "Juego de cartas coleccionables oficial de monstruos de bolsillo.", true));
+            addFranquicia(new Franquicia(0, "Magic: The Gathering", "Wizards of the Coast", "El juego pionero de cartas coleccionables de estrategia y fantasía.", true));
+            addFranquicia(new Franquicia(0, "Yu-Gi-Oh!", "Konami", "Juego oficial de monstruos, magias y cartas trampa.", true));
+            addFranquicia(new Franquicia(0, "Disney Lorcana", "Ravensburger", "Juego de cartas coleccionables con personajes del universo Disney.", true));
+            addFranquicia(new Franquicia(0, "One Piece Card Game", "Bandai", "TCG competitivo basado en el manga y anime de Eiichiro Oda.", true));
+            addFranquicia(new Franquicia(0, "Digimon Card Game", "Bandai", "TCG dinámico de monstruos digitales con sistema de medidor de memoria.", true));
+            addFranquicia(new Franquicia(0, "Star Wars: Unlimited", "Fantasy Flight Games", "Juego de cartas trepidante y estratégico del universo Star Wars.", true));
+        } catch (Exception ex) {
+            System.err.println("Aviso al sembrar franquicias: " + ex.getMessage());
         }
     }
 
@@ -752,6 +806,178 @@ public class DatabaseService {
                     p.setPrecioUnitario(rs.getBigDecimal("precio_unitario"));
                     p.setStock(rs.getInt("stock"));
                     return p;
+                }
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+        return null;
+    }
+
+    // =========================================================================
+    // CRUD: FRANQUICIA (Juegos TCG Jugables)
+    // =========================================================================
+
+    public synchronized List<Franquicia> getFranquicias() {
+        List<Franquicia> list = new ArrayList<>();
+        String sql = "SELECT id_franquicia, nombre, fabricante, descripcion, activo, fecha_registro FROM franquicia ORDER BY nombre ASC";
+        try (Statement st = getConnection().createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            while (rs.next()) {
+                Franquicia f = new Franquicia();
+                f.setIdFranquicia(rs.getInt("id_franquicia"));
+                f.setNombre(rs.getString("nombre"));
+                f.setFabricante(rs.getString("fabricante"));
+                f.setDescripcion(rs.getString("descripcion"));
+                f.setActivo(rs.getInt("activo") != 0);
+                f.setFechaRegistro(parseDateTime(rs.getString("fecha_registro")));
+                list.add(f);
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+        return list;
+    }
+
+    public synchronized List<String> getNombresFranquiciasActivas() {
+        List<String> list = new ArrayList<>();
+        String sql = "SELECT nombre FROM franquicia WHERE activo = 1 ORDER BY nombre ASC";
+        try (Statement st = getConnection().createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            while (rs.next()) {
+                list.add(rs.getString("nombre"));
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+        if (list.isEmpty()) {
+            list.addAll(Arrays.asList("Pokémon", "Magic: The Gathering", "Yu-Gi-Oh!", "Disney Lorcana", "One Piece Card Game"));
+        }
+        return list;
+    }
+
+    public synchronized void addFranquicia(Franquicia f) throws Exception {
+        if (f.getNombre() == null || f.getNombre().trim().isEmpty()) {
+            throw new Exception("El nombre de la franquicia es obligatorio.");
+        }
+        String sql = "INSERT INTO franquicia (nombre, fabricante, descripcion, activo, fecha_registro) VALUES (?, ?, ?, ?, ?)";
+        try (PreparedStatement ps = getConnection().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, f.getNombre().trim());
+            ps.setString(2, f.getFabricante() != null ? f.getFabricante().trim() : "");
+            ps.setString(3, f.getDescripcion() != null ? f.getDescripcion().trim() : "");
+            ps.setInt(4, f.isActivo() ? 1 : 0);
+            LocalDateTime reg = f.getFechaRegistro() != null ? f.getFechaRegistro() : LocalDateTime.now();
+            ps.setString(5, reg.format(dtfDateTime));
+            ps.executeUpdate();
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                if (keys.next()) {
+                    f.setIdFranquicia(keys.getInt(1));
+                    f.setFechaRegistro(reg);
+                }
+            }
+        } catch (SQLException ex) {
+            if (ex.getMessage() != null && ex.getMessage().toLowerCase().contains("unique")) {
+                throw new Exception("Ya existe una franquicia registrada con el nombre '" + f.getNombre() + "'.");
+            }
+            throw new Exception("Error al registrar franquicia: " + ex.getMessage(), ex);
+        }
+    }
+
+    public synchronized void updateFranquicia(Franquicia f, String oldName) throws Exception {
+        if (f.getNombre() == null || f.getNombre().trim().isEmpty()) {
+            throw new Exception("El nombre de la franquicia es obligatorio.");
+        }
+        String sql = "UPDATE franquicia SET nombre = ?, fabricante = ?, descripcion = ?, activo = ? WHERE id_franquicia = ?";
+        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            ps.setString(1, f.getNombre().trim());
+            ps.setString(2, f.getFabricante() != null ? f.getFabricante().trim() : "");
+            ps.setString(3, f.getDescripcion() != null ? f.getDescripcion().trim() : "");
+            ps.setInt(4, f.isActivo() ? 1 : 0);
+            ps.setInt(5, f.getIdFranquicia());
+            ps.executeUpdate();
+
+            // Si el nombre cambió, actualizar en cascada los productos y torneos asociados
+            if (oldName != null && !oldName.trim().equalsIgnoreCase(f.getNombre().trim())) {
+                try (PreparedStatement psProd = getConnection().prepareStatement("UPDATE producto SET juego_tcg = ? WHERE juego_tcg = ?")) {
+                    psProd.setString(1, f.getNombre().trim());
+                    psProd.setString(2, oldName.trim());
+                    psProd.executeUpdate();
+                }
+                try (PreparedStatement psTorneo = getConnection().prepareStatement("UPDATE torneo SET juego_tcg = ? WHERE juego_tcg = ?")) {
+                    psTorneo.setString(1, f.getNombre().trim());
+                    psTorneo.setString(2, oldName.trim());
+                    psTorneo.executeUpdate();
+                }
+            }
+        } catch (SQLException ex) {
+            if (ex.getMessage() != null && ex.getMessage().toLowerCase().contains("unique")) {
+                throw new Exception("Ya existe otra franquicia registrada con el nombre '" + f.getNombre() + "'.");
+            }
+            throw new Exception("Error al actualizar franquicia: " + ex.getMessage(), ex);
+        }
+    }
+
+    public synchronized int countProductosByFranquicia(String nombreFranquicia) {
+        if (nombreFranquicia == null || nombreFranquicia.trim().isEmpty()) return 0;
+        String sql = "SELECT COUNT(*) FROM producto WHERE LOWER(juego_tcg) = LOWER(?)";
+        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            ps.setString(1, nombreFranquicia.trim());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    public synchronized int countTorneosByFranquicia(String nombreFranquicia) {
+        if (nombreFranquicia == null || nombreFranquicia.trim().isEmpty()) return 0;
+        String sql = "SELECT COUNT(*) FROM torneo WHERE LOWER(juego_tcg) = LOWER(?)";
+        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            ps.setString(1, nombreFranquicia.trim());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    public synchronized void deleteFranquicia(int idFranquicia, String nombreFranquicia) throws Exception {
+        int prods = countProductosByFranquicia(nombreFranquicia);
+        int torneos = countTorneosByFranquicia(nombreFranquicia);
+
+        if (prods > 0 || torneos > 0) {
+            throw new Exception("No es posible eliminar la franquicia '" + nombreFranquicia + "' porque tiene " +
+                    prods + " producto(s) en inventario y " + torneos + " torneo(s) vinculados.\n\n" +
+                    "Sugerencia: Puedes 'Desactivar' la franquicia para que no aparezca en nuevas selecciones, o reasignar sus productos.");
+        }
+
+        String sql = "DELETE FROM franquicia WHERE id_franquicia = ?";
+        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            ps.setInt(1, idFranquicia);
+            ps.executeUpdate();
+        } catch (SQLException ex) {
+            throw new Exception("Error al eliminar franquicia: " + ex.getMessage(), ex);
+        }
+    }
+
+    public synchronized Franquicia findFranquiciaById(int idFranquicia) {
+        String sql = "SELECT id_franquicia, nombre, fabricante, descripcion, activo, fecha_registro FROM franquicia WHERE id_franquicia = ?";
+        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            ps.setInt(1, idFranquicia);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    Franquicia f = new Franquicia();
+                    f.setIdFranquicia(rs.getInt("id_franquicia"));
+                    f.setNombre(rs.getString("nombre"));
+                    f.setFabricante(rs.getString("fabricante"));
+                    f.setDescripcion(rs.getString("descripcion"));
+                    f.setActivo(rs.getInt("activo") != 0);
+                    f.setFechaRegistro(parseDateTime(rs.getString("fecha_registro")));
+                    return f;
                 }
             }
         } catch (SQLException ex) {
@@ -1243,7 +1469,7 @@ public class DatabaseService {
 
     public Map<String, Integer> getTableCounts() {
         Map<String, Integer> counts = new LinkedHashMap<>();
-        String[] tables = {"cliente", "usuario", "producto", "venta", "detalle_venta", "preventa", "torneo", "participante_torneo"};
+        String[] tables = {"cliente", "usuario", "producto", "franquicia", "venta", "detalle_venta", "preventa", "torneo", "participante_torneo"};
         for (String t : tables) {
             try (Statement st = getConnection().createStatement();
                  ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM " + t)) {
@@ -1265,6 +1491,7 @@ public class DatabaseService {
                 st.execute("DROP TABLE IF EXISTS detalle_venta;");
                 st.execute("DROP TABLE IF EXISTS venta;");
                 st.execute("DROP TABLE IF EXISTS producto;");
+                st.execute("DROP TABLE IF EXISTS franquicia;");
                 st.execute("DROP TABLE IF EXISTS usuario;");
                 st.execute("DROP TABLE IF EXISTS cliente;");
                 st.execute("SET FOREIGN_KEY_CHECKS = 1;");
@@ -1276,12 +1503,15 @@ public class DatabaseService {
                 st.execute("DROP TABLE IF EXISTS detalle_venta;");
                 st.execute("DROP TABLE IF EXISTS venta;");
                 st.execute("DROP TABLE IF EXISTS producto;");
+                st.execute("DROP TABLE IF EXISTS franquicia;");
                 st.execute("DROP TABLE IF EXISTS usuario;");
                 st.execute("DROP TABLE IF EXISTS cliente;");
                 st.execute("PRAGMA foreign_keys = ON;");
             }
         }
         createTablesIfNotExist();
+        seedFranquicias();
+        seedSampleData();
     }
 
     public synchronized QueryResult executeCustomQuery(String sql) throws Exception {

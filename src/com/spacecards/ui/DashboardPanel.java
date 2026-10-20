@@ -37,7 +37,7 @@ public class DashboardPanel extends JPanel {
         JLabel lblTitle = new JLabel("Panel de Control General");
         lblTitle.setFont(UITheme.FONT_TITLE);
 
-        JLabel lblSub = new JLabel("Resumen de operaciones del TCG Pokémon y tienda especializada");
+        JLabel lblSub = new JLabel("Resumen de operaciones multijuego TCG y tienda especializada");
         lblSub.setFont(UITheme.FONT_REGULAR);
         lblSub.setForeground(UITheme.COLOR_TEXT_MUTED);
 

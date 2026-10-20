@@ -54,11 +54,12 @@ public class SidebarPanel extends JPanel {
         // Center: Navigation buttons
         JPanel navContainer = new JPanel();
         navContainer.setOpaque(false);
-        navContainer.setLayout(new GridLayout(8, 1, 0, 6));
+        navContainer.setLayout(new GridLayout(9, 1, 0, 6));
 
         addNavItem(navContainer, "Dashboard", "DASHBOARD", true);
         addNavItem(navContainer, "Punto de Venta", "POS", false);
         addNavItem(navContainer, "Inventario TCG", "INVENTARIO", false);
+        addNavItem(navContainer, "Franquicias TCG", "FRANQUICIAS", false);
         addNavItem(navContainer, "Clientes", "CLIENTES", false);
         addNavItem(navContainer, "Preventas", "PREVENTAS", false);
         addNavItem(navContainer, "Torneos", "TORNEOS", false);

@@ -214,7 +214,12 @@ public class TorneosPanel extends JPanel {
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
         JTextField txtNombre = new JTextField();
-        JComboBox<String> cmbJuego = new JComboBox<>(new String[]{"Pokémon", "Magic", "Yu-Gi-Oh!", "Lorcana"});
+        List<String> activeFranquicias = db.getNombresFranquiciasActivas();
+        if (activeFranquicias.isEmpty()) {
+            activeFranquicias = new ArrayList<>();
+            activeFranquicias.add("General");
+        }
+        JComboBox<String> cmbJuego = new JComboBox<>(activeFranquicias.toArray(new String[0]));
         JComboBox<Usuario> cmbOrg = new JComboBox<>();
         for (Usuario u : db.getUsuarios()) {
             if (u.isActivo() && ("Organizador_Torneos".equals(u.getRol()) || "Administrador".equals(u.getRol()))) {

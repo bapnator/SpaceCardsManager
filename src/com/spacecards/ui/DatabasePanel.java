@@ -15,12 +15,13 @@ public class DatabasePanel extends JPanel {
     private final DatabaseService db = DatabaseService.getInstance();
     private final JLabel lblDbPath = new JLabel();
     private final JLabel lblDbStatus = new JLabel();
-    private final JPanel pnlStats = new JPanel(new GridLayout(2, 4, 10, 10));
+    private final JPanel pnlStats = new JPanel(new GridLayout(3, 3, 10, 10));
 
     private final JTextArea txtSql = new JTextArea("SELECT id_producto, codigo_barras, nombre, categoria, precio_unitario, stock FROM producto ORDER BY stock ASC;", 4, 50);
     private final JComboBox<String> cmbQuickQueries = new JComboBox<>(new String[]{
             "-- Consultas rápidas recomendadas --",
             "SELECT id_producto, codigo_barras, nombre, categoria, precio_unitario, stock FROM producto ORDER BY stock ASC;",
+            "SELECT id_franquicia, nombre, fabricante, activo, fecha_registro FROM franquicia ORDER BY nombre ASC;",
             "SELECT v.id_venta, CONCAT(c.nombre, ' ', c.apellido) AS cliente, v.metodo_pago, v.monto_total, v.fecha_venta FROM venta v LEFT JOIN cliente c ON v.id_cliente = c.id_cliente ORDER BY v.id_venta DESC;",
             "SELECT id_preventa, monto_anticipo, monto_total, fecha_estimada_entrega, estado FROM preventa WHERE estado = 'Pendiente';",
             "SELECT t.nombre_torneo, t.juego_tcg, t.fecha_evento, t.costo_inscripcion, t.cupo_maximo, t.estado, COUNT(pt.id_inscripcion) AS inscritos FROM torneo t LEFT JOIN participante_torneo pt ON t.id_torneo = pt.id_torneo GROUP BY t.id_torneo;",
