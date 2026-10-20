@@ -54,16 +54,17 @@ public class SidebarPanel extends JPanel {
         // Center: Navigation buttons
         JPanel navContainer = new JPanel();
         navContainer.setOpaque(false);
-        navContainer.setLayout(new GridLayout(8, 1, 0, 6));
+        navContainer.setLayout(new GridLayout(9, 1, 0, 6));
 
-        addNavItem(navContainer, "📊  Dashboard", "DASHBOARD", true);
-        addNavItem(navContainer, "🛒  Punto de Venta", "POS", false);
-        addNavItem(navContainer, "🎴  Inventario TCG", "INVENTARIO", false);
-        addNavItem(navContainer, "👥  Clientes", "CLIENTES", false);
-        addNavItem(navContainer, "📦  Preventas", "PREVENTAS", false);
-        addNavItem(navContainer, "🏆  Torneos", "TORNEOS", false);
-        addNavItem(navContainer, "🛡️  Personal / Staff", "USUARIOS", false);
-        addNavItem(navContainer, "⚙️  Base de Datos", "DATABASE", false);
+        addNavItem(navContainer, "Dashboard", "DASHBOARD", true);
+        addNavItem(navContainer, "Punto de Venta", "POS", false);
+        addNavItem(navContainer, "Inventario TCG", "INVENTARIO", false);
+        addNavItem(navContainer, "Franquicias TCG", "FRANQUICIAS", false);
+        addNavItem(navContainer, "Clientes", "CLIENTES", false);
+        addNavItem(navContainer, "Preventas", "PREVENTAS", false);
+        addNavItem(navContainer, "Torneos", "TORNEOS", false);
+        addNavItem(navContainer, "Personal / Staff", "USUARIOS", false);
+        addNavItem(navContainer, "Base de Datos", "DATABASE", false);
 
         this.add(navContainer, BorderLayout.CENTER);
 
@@ -85,7 +86,7 @@ public class SidebarPanel extends JPanel {
         lblRole.setForeground(UITheme.COLOR_TEXT_MUTED);
         lblRole.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        lblDbStatus = new JLabel("🟢 " + DatabaseService.getInstance().getConnectionStatus());
+        lblDbStatus = new JLabel("" + DatabaseService.getInstance().getConnectionStatus());
         lblDbStatus.setFont(new Font("Segoe UI", Font.PLAIN, 10));
         lblDbStatus.setForeground(UITheme.COLOR_SUCCESS);
         lblDbStatus.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -125,13 +126,13 @@ public class SidebarPanel extends JPanel {
             if (!SessionManager.getInstance().canAccessCard(cardName)) {
                 if (SessionManager.getInstance().isAshBridgeUser()) {
                     JOptionPane.showMessageDialog(this,
-                            "⚠️ Acceso Restringido\n\n" +
+                            "Acceso Restringido\n\n" +
                             "'Ash Ketchum' es un usuario puente temporal.\n" +
-                            "Su único permiso es acceder a '🛡️ Personal / Staff' para registrar los Administradores y empleados iniciales del sistema.",
+                            "Su único permiso es acceder a 'Personal / Staff' para registrar los Administradores y empleados iniciales del sistema.",
                             "Permisos de Usuario Puente", JOptionPane.WARNING_MESSAGE);
                 } else {
                     JOptionPane.showMessageDialog(this,
-                            "⚠️ Acceso Denegado\n\n" +
+                            "Acceso Denegado\n\n" +
                             "Tu rol actual (" + SessionManager.getInstance().getCurrentUser().getRol() + ") no tiene permisos para acceder a esta sección.",
                             "Acceso Restringido", JOptionPane.WARNING_MESSAGE);
                 }
@@ -186,7 +187,7 @@ public class SidebarPanel extends JPanel {
     }
 
     public void updateDbStatus(String status, boolean isConnected) {
-        lblDbStatus.setText((isConnected ? "🟢 " : "🟡 ") + status);
+        lblDbStatus.setText((isConnected ? "V" : "A ") + status);
         lblDbStatus.setForeground(isConnected ? UITheme.COLOR_SUCCESS : UITheme.COLOR_ACCENT);
     }
 }

@@ -15,12 +15,13 @@ public class DatabasePanel extends JPanel {
     private final DatabaseService db = DatabaseService.getInstance();
     private final JLabel lblDbPath = new JLabel();
     private final JLabel lblDbStatus = new JLabel();
-    private final JPanel pnlStats = new JPanel(new GridLayout(2, 4, 10, 10));
+    private final JPanel pnlStats = new JPanel(new GridLayout(3, 3, 10, 10));
 
     private final JTextArea txtSql = new JTextArea("SELECT id_producto, codigo_barras, nombre, categoria, precio_unitario, stock FROM producto ORDER BY stock ASC;", 4, 50);
     private final JComboBox<String> cmbQuickQueries = new JComboBox<>(new String[]{
             "-- Consultas rápidas recomendadas --",
             "SELECT id_producto, codigo_barras, nombre, categoria, precio_unitario, stock FROM producto ORDER BY stock ASC;",
+            "SELECT id_franquicia, nombre, fabricante, activo, fecha_registro FROM franquicia ORDER BY nombre ASC;",
             "SELECT v.id_venta, CONCAT(c.nombre, ' ', c.apellido) AS cliente, v.metodo_pago, v.monto_total, v.fecha_venta FROM venta v LEFT JOIN cliente c ON v.id_cliente = c.id_cliente ORDER BY v.id_venta DESC;",
             "SELECT id_preventa, monto_anticipo, monto_total, fecha_estimada_entrega, estado FROM preventa WHERE estado = 'Pendiente';",
             "SELECT t.nombre_torneo, t.juego_tcg, t.fecha_evento, t.costo_inscripcion, t.cupo_maximo, t.estado, COUNT(pt.id_inscripcion) AS inscritos FROM torneo t LEFT JOIN participante_torneo pt ON t.id_torneo = pt.id_torneo GROUP BY t.id_torneo;",
@@ -62,16 +63,16 @@ public class DatabasePanel extends JPanel {
         JPanel headerButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         headerButtons.setOpaque(false);
 
-        JButton btnConfig = UITheme.createSecondaryButton("⚙️ Conexión (MariaDB / SQLite)");
+        JButton btnConfig = UITheme.createSecondaryButton("Conexión (MariaDB / SQLite)");
         btnConfig.addActionListener(e -> showConfigDialog());
 
-        JButton btnOpen = UITheme.createSecondaryButton("📂 Cambiar BD (.db)");
+        JButton btnOpen = UITheme.createSecondaryButton("Cambiar BD (.db)");
         btnOpen.addActionListener(e -> chooseDatabaseFile());
 
-        JButton btnReset = UITheme.createSecondaryButton("🗑️ Limpiar Base de Datos");
+        JButton btnReset = UITheme.createSecondaryButton("Limpiar Base de Datos");
         btnReset.addActionListener(e -> resetDatabase());
 
-        JButton btnScript = UITheme.createSecondaryButton("📜 Ver Esquema DDL");
+        JButton btnScript = UITheme.createSecondaryButton("Ver Esquema DDL");
         btnScript.addActionListener(e -> showSqlScriptDialog());
 
         headerButtons.add(btnConfig);
@@ -116,7 +117,7 @@ public class DatabasePanel extends JPanel {
         JPanel consoleHeader = new JPanel(new BorderLayout(8, 8));
         consoleHeader.setOpaque(false);
 
-        JLabel lblConsoleTitle = new JLabel("⚡ Consola de Consultas SQL Directa");
+        JLabel lblConsoleTitle = new JLabel("Consola de Consultas SQL Directa");
         lblConsoleTitle.setFont(UITheme.FONT_SUBTITLE);
         consoleHeader.add(lblConsoleTitle, BorderLayout.WEST);
         consoleHeader.add(cmbQuickQueries, BorderLayout.EAST);
@@ -141,7 +142,7 @@ public class DatabasePanel extends JPanel {
         txtSql.setCaretColor(Color.WHITE);
         txtSql.setBorder(new EmptyBorder(8, 8, 8, 8));
 
-        JButton btnRunSql = UITheme.createPrimaryButton("▶️ Ejecutar SQL");
+        JButton btnRunSql = UITheme.createPrimaryButton("Ejecutar SQL");
         btnRunSql.setPreferredSize(new Dimension(140, 40));
         btnRunSql.addActionListener(e -> runQuery());
 
@@ -169,8 +170,8 @@ public class DatabasePanel extends JPanel {
     }
 
     public void refreshPanel() {
-        lblDbStatus.setText("🟢 " + db.getConnectionStatus() + " | Driver: org.sqlite.JDBC (SQLite 3)");
-        lblDbPath.setText("📁 Archivo activo: " + db.getCurrentDbPath());
+        lblDbStatus.setText("" + db.getConnectionStatus() + " | Driver: org.sqlite.JDBC (SQLite 3)");
+        lblDbPath.setText("Archivo activo: " + db.getCurrentDbPath());
 
         // Actualizar estadísticas de tablas
         pnlStats.removeAll();
@@ -222,7 +223,7 @@ public class DatabasePanel extends JPanel {
             refreshPanel();
             if (onStatusChange != null) onStatusChange.run();
         } catch (Exception ex) {
-            lblQueryStatus.setText("❌ Error SQL: " + ex.getMessage());
+            lblQueryStatus.setText("Error SQL: " + ex.getMessage());
             lblQueryStatus.setForeground(UITheme.COLOR_DANGER);
         }
     }
@@ -357,7 +358,7 @@ public class DatabasePanel extends JPanel {
         JButton btnCancelar = UITheme.createSecondaryButton("Cancelar");
         btnCancelar.addActionListener(e -> dlg.dispose());
 
-        JButton btnGuardar = UITheme.createPrimaryButton("💾 Guardar y Conectar");
+        JButton btnGuardar = UITheme.createPrimaryButton("Guardar y Conectar");
         btnGuardar.addActionListener(e -> {
             String selectedType = cmbType.getSelectedIndex() == 0 ? "mariadb" : "sqlite";
             String h = txtHost.getText().trim();

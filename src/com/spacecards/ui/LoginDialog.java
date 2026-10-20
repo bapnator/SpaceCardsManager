@@ -45,7 +45,7 @@ public class LoginDialog extends JDialog {
         headerPanel.setOpaque(false);
         headerPanel.setLayout(new BoxLayout(headerPanel, BoxLayout.Y_AXIS));
 
-        JLabel lblBadge = new JLabel("✨ ASISTENTE DE PRIMER INICIO");
+        JLabel lblBadge = new JLabel("ASISTENTE DE PRIMER INICIO");
         lblBadge.setFont(new Font("Segoe UI", Font.BOLD, 11));
         lblBadge.setForeground(UITheme.COLOR_ACCENT);
         lblBadge.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -79,7 +79,7 @@ public class LoginDialog extends JDialog {
                 new EmptyBorder(14, 16, 14, 16)
         ));
 
-        JLabel lblStepsTitle = new JLabel("📋 Primeros pasos para configurar tu tienda:");
+        JLabel lblStepsTitle = new JLabel("Primeros pasos para configurar tu tienda:");
         lblStepsTitle.setFont(UITheme.FONT_BOLD);
         lblStepsTitle.setForeground(Color.WHITE);
         guideCard.add(lblStepsTitle);
@@ -130,7 +130,7 @@ public class LoginDialog extends JDialog {
             }
         });
 
-        JButton btnComenzar = UITheme.createPrimaryButton("🚀 Comenzar Configuración");
+        JButton btnComenzar = UITheme.createPrimaryButton("Comenzar Configuración");
         btnComenzar.addActionListener(e -> {
             selectedUser = DatabaseService.ASH_BRIDGE_USER;
             dispose();

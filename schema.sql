@@ -30,6 +30,18 @@ CREATE TABLE IF NOT EXISTS usuario (
 );
 
 -- ========================================================
+-- TABLA: FRANQUICIA (Juegos TCG Jugables)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS franquicia (
+    id_franquicia INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre VARCHAR(50) NOT NULL UNIQUE,
+    fabricante VARCHAR(50),
+    descripcion TEXT,
+    activo BOOLEAN DEFAULT 1,
+    fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ========================================================
 -- TABLA: PRODUCTO
 -- ========================================================
 CREATE TABLE IF NOT EXISTS producto (

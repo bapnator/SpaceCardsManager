@@ -48,13 +48,13 @@ public class ClientesPanel extends JPanel {
         JPanel actionButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         actionButtons.setOpaque(false);
 
-        JButton btnNuevo = UITheme.createPrimaryButton("➕ Registrar Cliente");
+        JButton btnNuevo = UITheme.createPrimaryButton("Registrar Cliente");
         btnNuevo.addActionListener(e -> showClienteDialog(null));
 
-        JButton btnEditar = UITheme.createSecondaryButton("✏️ Editar");
+        JButton btnEditar = UITheme.createSecondaryButton("Editar");
         btnEditar.addActionListener(e -> editSelectedCliente());
 
-        JButton btnEliminar = UITheme.createSecondaryButton("🗑️ Eliminar");
+        JButton btnEliminar = UITheme.createSecondaryButton("Eliminar");
         btnEliminar.addActionListener(e -> deleteSelectedCliente());
 
         actionButtons.add(btnNuevo);
@@ -160,7 +160,7 @@ public class ClientesPanel extends JPanel {
         dialog.add(form, BorderLayout.CENTER);
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton btnGuardar = UITheme.createPrimaryButton("💾 Guardar");
+        JButton btnGuardar = UITheme.createPrimaryButton("Guardar");
         btnGuardar.addActionListener(e -> {
             String nom = txtNombre.getText().trim();
             String ape = txtApellido.getText().trim();

@@ -37,7 +37,7 @@ public class DashboardPanel extends JPanel {
         JLabel lblTitle = new JLabel("Panel de Control General");
         lblTitle.setFont(UITheme.FONT_TITLE);
 
-        JLabel lblSub = new JLabel("Resumen de operaciones del TCG Pokémon y tienda especializada");
+        JLabel lblSub = new JLabel("Resumen de operaciones multijuego TCG y tienda especializada");
         lblSub.setFont(UITheme.FONT_REGULAR);
         lblSub.setForeground(UITheme.COLOR_TEXT_MUTED);
 
@@ -50,7 +50,7 @@ public class DashboardPanel extends JPanel {
 
         headerPanel.add(titleBox, BorderLayout.WEST);
 
-        JButton btnRefresh = UITheme.createSecondaryButton("🔄 Actualizar");
+        JButton btnRefresh = UITheme.createSecondaryButton("Actualizar");
         btnRefresh.addActionListener(e -> refreshData());
         headerPanel.add(btnRefresh, BorderLayout.EAST);
 
@@ -64,10 +64,10 @@ public class DashboardPanel extends JPanel {
         JPanel statsGrid = new JPanel(new GridLayout(1, 4, 16, 0));
         statsGrid.setOpaque(false);
 
-        statsGrid.add(createKpiCard("💰 Ingresos por Ventas", lblTotalVentas, UITheme.COLOR_SUCCESS));
-        statsGrid.add(createKpiCard("🎴 Inventario Disponible", lblStockTotal, UITheme.COLOR_PRIMARY));
-        statsGrid.add(createKpiCard("📦 Preventas Activas", lblPreventasCount, UITheme.COLOR_ACCENT));
-        statsGrid.add(createKpiCard("🏆 Torneos Programados", lblTorneosCount, new Color(168, 85, 247)));
+        statsGrid.add(createKpiCard("Ingresos por Ventas", lblTotalVentas, UITheme.COLOR_SUCCESS));
+        statsGrid.add(createKpiCard("Inventario Disponible", lblStockTotal, UITheme.COLOR_PRIMARY));
+        statsGrid.add(createKpiCard("Preventas Activas", lblPreventasCount, UITheme.COLOR_ACCENT));
+        statsGrid.add(createKpiCard("Torneos Programados", lblTorneosCount, new Color(168, 85, 247)));
 
         centerPanel.add(statsGrid, BorderLayout.NORTH);
 
@@ -81,11 +81,11 @@ public class DashboardPanel extends JPanel {
 
         JPanel ventasHeader = new JPanel(new BorderLayout());
         ventasHeader.setOpaque(false);
-        JLabel lblVentasTitle = new JLabel("💳 Ventas Recientes");
+        JLabel lblVentasTitle = new JLabel("Ventas Recientes");
         lblVentasTitle.setFont(UITheme.FONT_SUBTITLE);
         ventasHeader.add(lblVentasTitle, BorderLayout.WEST);
 
-        JButton btnVerDetalle = UITheme.createSecondaryButton("🔍 Ver Ticket / Detalle");
+        JButton btnVerDetalle = UITheme.createSecondaryButton("Ver Ticket / Detalle");
         btnVerDetalle.addActionListener(e -> showDetalleVentaDialog());
         ventasHeader.add(btnVerDetalle, BorderLayout.EAST);
         cardVentas.add(ventasHeader, BorderLayout.NORTH);
@@ -108,7 +108,7 @@ public class DashboardPanel extends JPanel {
         // Torneos Activos Card
         JPanel cardTorneos = UITheme.createCardPanel();
         cardTorneos.setLayout(new BorderLayout(8, 8));
-        JLabel lblTorneosTitle = new JLabel("🏆 Próximos Torneos & Eventos");
+        JLabel lblTorneosTitle = new JLabel("Próximos Torneos & Eventos");
         lblTorneosTitle.setFont(UITheme.FONT_SUBTITLE);
         cardTorneos.add(lblTorneosTitle, BorderLayout.NORTH);
 

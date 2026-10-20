@@ -113,7 +113,7 @@ public class VentasPanel extends JPanel {
         spinCantidad.setPreferredSize(new Dimension(60, 30));
         addPanel.add(spinCantidad);
 
-        JButton btnAddToCart = UITheme.createPrimaryButton("➕ Añadir al Carrito");
+        JButton btnAddToCart = UITheme.createPrimaryButton("Añadir al Carrito");
         btnAddToCart.addActionListener(e -> addItemToCart());
         addPanel.add(btnAddToCart);
         panelCatalogo.add(addPanel, BorderLayout.SOUTH);
@@ -124,7 +124,7 @@ public class VentasPanel extends JPanel {
         JPanel panelCheckout = UITheme.createCardPanel();
         panelCheckout.setLayout(new BorderLayout(10, 10));
 
-        JLabel lblCartTitle = new JLabel("🛒 Carrito de Compras");
+        JLabel lblCartTitle = new JLabel("Carrito de Compras");
         lblCartTitle.setFont(UITheme.FONT_SUBTITLE);
         panelCheckout.add(lblCartTitle, BorderLayout.NORTH);
 
@@ -140,7 +140,7 @@ public class VentasPanel extends JPanel {
         // Acciones carrito (Quitar item seleccionado)
         JPanel cartActions = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         cartActions.setOpaque(false);
-        JButton btnRemove = UITheme.createSecondaryButton("🗑️ Quitar del Carrito");
+        JButton btnRemove = UITheme.createSecondaryButton("Quitar del Carrito");
         btnRemove.addActionListener(e -> removeCartItem());
         JButton btnClear = UITheme.createSecondaryButton("Vaciar");
         btnClear.addActionListener(e -> clearCart());
@@ -176,7 +176,7 @@ public class VentasPanel extends JPanel {
         lblTotal.setForeground(UITheme.COLOR_ACCENT);
         checkoutForm.add(lblTotal, cf);
 
-        JButton btnCobrar = UITheme.createAccentButton("💳 Confirmar y Cobrar Venta");
+        JButton btnCobrar = UITheme.createAccentButton("Confirmar y Cobrar Venta");
         btnCobrar.setPreferredSize(new Dimension(220, 42));
         btnCobrar.addActionListener(e -> processCheckout());
 

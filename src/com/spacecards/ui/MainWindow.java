@@ -15,6 +15,7 @@ public class MainWindow extends JFrame {
     private DashboardPanel dashboardPanel;
     private VentasPanel ventasPanel;
     private InventarioPanel inventarioPanel;
+    private FranquiciasPanel franquiciasPanel;
     private ClientesPanel clientesPanel;
     private PreventasPanel preventasPanel;
     private TorneosPanel torneosPanel;
@@ -38,6 +39,7 @@ public class MainWindow extends JFrame {
         dashboardPanel = new DashboardPanel();
         ventasPanel = new VentasPanel(notifyDataChanged);
         inventarioPanel = new InventarioPanel(notifyDataChanged);
+        franquiciasPanel = new FranquiciasPanel(notifyDataChanged);
         clientesPanel = new ClientesPanel(notifyDataChanged);
         preventasPanel = new PreventasPanel(notifyDataChanged);
         torneosPanel = new TorneosPanel(notifyDataChanged);
@@ -51,6 +53,7 @@ public class MainWindow extends JFrame {
         cardsContainer.add(dashboardPanel, "DASHBOARD");
         cardsContainer.add(ventasPanel, "POS");
         cardsContainer.add(inventarioPanel, "INVENTARIO");
+        cardsContainer.add(franquiciasPanel, "FRANQUICIAS");
         cardsContainer.add(clientesPanel, "CLIENTES");
         cardsContainer.add(preventasPanel, "PREVENTAS");
         cardsContainer.add(torneosPanel, "TORNEOS");
@@ -64,6 +67,9 @@ public class MainWindow extends JFrame {
                 refreshAllPanels();
                 if ("DATABASE".equals(cardName) && databasePanel != null) {
                     databasePanel.refreshPanel();
+                }
+                if ("FRANQUICIAS".equals(cardName) && franquiciasPanel != null) {
+                    franquiciasPanel.refreshTable();
                 }
             },
             this::promptLogin
@@ -115,6 +121,7 @@ public class MainWindow extends JFrame {
         if (dashboardPanel != null) dashboardPanel.refreshData();
         if (ventasPanel != null) ventasPanel.refreshAll();
         if (inventarioPanel != null) inventarioPanel.refreshTable();
+        if (franquiciasPanel != null) franquiciasPanel.refreshTable();
         if (clientesPanel != null) clientesPanel.refreshTable();
         if (preventasPanel != null) preventasPanel.refreshTable();
         if (torneosPanel != null) torneosPanel.refreshTorneos();

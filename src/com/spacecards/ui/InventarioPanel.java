@@ -17,12 +17,11 @@ public class InventarioPanel extends JPanel {
     private final JComboBox<String> cmbCategoria = new JComboBox<>(new String[]{
             "Todas las categorías", "Single Card", "Booster Box", "Elite Trainer Box", "Sleeves", "Deck"
     });
-    private final JComboBox<String> cmbJuego = new JComboBox<>(new String[]{
-            "Todos los juegos", "Pokémon", "Magic", "Yu-Gi-Oh!", "Lorcana"
-    });
+    private final JComboBox<String> cmbJuego = new JComboBox<>();
     private final JComboBox<String> cmbStock = new JComboBox<>(new String[]{
             "Todos", "Con stock (> 0)", "Stock crítico (<= 5)", "Agotado (0)"
     });
+    private boolean updatingJuegosFilter = false;
 
     private final DefaultTableModel tableModel;
     private final JTable table;
@@ -57,13 +56,13 @@ public class InventarioPanel extends JPanel {
         JPanel actionButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         actionButtons.setOpaque(false);
 
-        JButton btnNuevo = UITheme.createPrimaryButton("➕ Registrar Producto");
+        JButton btnNuevo = UITheme.createPrimaryButton("Registrar Producto");
         btnNuevo.addActionListener(e -> showProductoDialog(null));
 
-        JButton btnEditar = UITheme.createSecondaryButton("✏️ Editar");
+        JButton btnEditar = UITheme.createSecondaryButton("Editar");
         btnEditar.addActionListener(e -> editSelectedProducto());
 
-        JButton btnEliminar = UITheme.createSecondaryButton("🗑️ Eliminar");
+        JButton btnEliminar = UITheme.createSecondaryButton("Eliminar");
         btnEliminar.addActionListener(e -> deleteSelectedProducto());
 
         actionButtons.add(btnNuevo);
@@ -94,7 +93,9 @@ public class InventarioPanel extends JPanel {
         filterBar.add(cmbCategoria, gbc);
 
         gbc.gridx = 2; gbc.gridy = 0; gbc.weightx = 0.2;
-        cmbJuego.addActionListener(e -> refreshTable());
+        cmbJuego.addActionListener(e -> {
+            if (!updatingJuegosFilter) refreshTable();
+        });
         filterBar.add(cmbJuego, gbc);
 
         gbc.gridx = 3; gbc.gridy = 0; gbc.weightx = 0.2;
@@ -116,10 +117,43 @@ public class InventarioPanel extends JPanel {
 
         this.add(cardPanel, BorderLayout.CENTER);
 
+        updateJuegosFilter();
         refreshTable();
     }
 
+    public void updateJuegosFilter() {
+        updatingJuegosFilter = true;
+        try {
+            String current = (String) cmbJuego.getSelectedItem();
+            List<String> activeNames = db.getNombresFranquiciasActivas();
+            boolean needReload = false;
+            if (cmbJuego.getItemCount() != activeNames.size() + 1) {
+                needReload = true;
+            } else {
+                for (int i = 0; i < activeNames.size(); i++) {
+                    if (!activeNames.get(i).equals(cmbJuego.getItemAt(i + 1))) {
+                        needReload = true;
+                        break;
+                    }
+                }
+            }
+            if (needReload) {
+                cmbJuego.removeAllItems();
+                cmbJuego.addItem("Todos los juegos");
+                for (String f : activeNames) {
+                    cmbJuego.addItem(f);
+                }
+                if (current != null) {
+                    cmbJuego.setSelectedItem(current);
+                }
+            }
+        } finally {
+            updatingJuegosFilter = false;
+        }
+    }
+
     public void refreshTable() {
+        updateJuegosFilter();
         String query = txtBuscar.getText().trim().toLowerCase();
         String cat = (String) cmbCategoria.getSelectedItem();
         String juego = (String) cmbJuego.getSelectedItem();
@@ -177,8 +211,15 @@ public class InventarioPanel extends JPanel {
         JComboBox<String> cmbCat = new JComboBox<>(new String[]{"Single Card", "Booster Box", "Elite Trainer Box", "Sleeves", "Deck"});
         if (isEdit) cmbCat.setSelectedItem(p.getCategoria());
 
-        JComboBox<String> cmbGame = new JComboBox<>(new String[]{"Pokémon", "Magic", "Yu-Gi-Oh!", "Lorcana"});
-        if (isEdit) cmbGame.setSelectedItem(p.getJuegoTcg());
+        List<String> listaJuegos = new ArrayList<>(db.getNombresFranquiciasActivas());
+        if (listaJuegos.isEmpty()) {
+            listaJuegos.add("General");
+        }
+        if (isEdit && p.getJuegoTcg() != null && !p.getJuegoTcg().isEmpty() && !listaJuegos.contains(p.getJuegoTcg())) {
+            listaJuegos.add(p.getJuegoTcg());
+        }
+        JComboBox<String> cmbGame = new JComboBox<>(listaJuegos.toArray(new String[0]));
+        if (isEdit && p.getJuegoTcg() != null) cmbGame.setSelectedItem(p.getJuegoTcg());
 
         JTextField txtPrecio = new JTextField(isEdit ? p.getPrecioUnitario().toString() : "0.00");
         JSpinner spinStock = new JSpinner(new SpinnerNumberModel(isEdit ? p.getStock() : 1, 0, 9999, 1));
@@ -223,7 +264,7 @@ public class InventarioPanel extends JPanel {
         dialog.add(form, BorderLayout.CENTER);
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton btnGuardar = UITheme.createPrimaryButton("💾 Guardar");
+        JButton btnGuardar = UITheme.createPrimaryButton("Guardar");
         btnGuardar.addActionListener(e -> {
             String name = txtNombre.getText().trim();
             if (name.isEmpty()) {
