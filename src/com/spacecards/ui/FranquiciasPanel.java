@@ -1,7 +1,7 @@
 package com.spacecards.ui;
 
 import com.spacecards.dao.DatabaseService;
-import com.spacecards.model.Franquicia;
+import com.spacecards.dao.DatabaseService.Franquicia;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;

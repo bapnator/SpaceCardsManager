@@ -68,9 +68,6 @@ public class MainWindow extends JFrame {
                 if ("DATABASE".equals(cardName) && databasePanel != null) {
                     databasePanel.refreshPanel();
                 }
-                if ("FRANQUICIAS".equals(cardName) && franquiciasPanel != null) {
-                    franquiciasPanel.refreshTable();
-                }
             },
             this::promptLogin
         );
