@@ -159,7 +159,9 @@ public class PreventasPanel extends JPanel {
         for (Usuario u : db.getUsuarios()) if (u.isActivo()) cmbUsr.addItem(u);
 
         JComboBox<Producto> cmbProd = new JComboBox<>();
-        for (Producto p : db.getProductos()) cmbProd.addItem(p);
+        for (Producto p : db.getProductos()) {
+            if (p.isPreventa()) cmbProd.addItem(p);
+        }
 
         JTextField txtTotal = new JTextField("0.00");
         JTextField txtAnticipo = new JTextField("0.00");

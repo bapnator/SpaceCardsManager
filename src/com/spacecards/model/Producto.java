@@ -3,6 +3,9 @@ package com.spacecards.model;
 import java.math.BigDecimal;
 
 public class Producto {
+    public static final String TIPO_PREVENTA = "PREVENTA";
+    public static final String TIPO_VENTA_NORMAL = "VENTA_NORMAL";
+
     private int idProducto;
     private String codigoBarras;
     private String nombre;
@@ -11,6 +14,7 @@ public class Producto {
     private String juegoTcg;  // 'Pokémon', 'Magic', 'Yu-Gi-Oh!', 'Lorcana'
     private BigDecimal precioUnitario;
     private int stock;
+    private String tipoVenta = TIPO_VENTA_NORMAL;
 
     public Producto() {
         this.juegoTcg = "Pokémon";
@@ -54,8 +58,14 @@ public class Producto {
     public int getStock() { return stock; }
     public void setStock(int stock) { this.stock = stock; }
 
+    public String getTipoVenta() { return tipoVenta; }
+    public void setTipoVenta(String tipoVenta) {
+        this.tipoVenta = TIPO_PREVENTA.equalsIgnoreCase(tipoVenta) ? TIPO_PREVENTA : TIPO_VENTA_NORMAL;
+    }
+    public boolean isPreventa() { return TIPO_PREVENTA.equals(tipoVenta); }
+
     @Override
     public String toString() {
-        return nombre + " ($" + precioUnitario + ") - Stock: " + stock;
+        return nombre + " ($" + precioUnitario + ") - " + (isPreventa() ? "Preventa" : "Stock: " + stock);
     }
 }

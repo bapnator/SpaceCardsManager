@@ -205,6 +205,7 @@ public class VentasPanel extends JPanel {
         currentCatalogList.clear();
 
         for (Producto p : db.getProductos()) {
+            if (p.isPreventa()) continue;
             boolean matchCat = cat == null || "Todas las categorías".equals(cat) || p.getCategoria().equalsIgnoreCase(cat);
             boolean matchQuery = query.isEmpty() ||
                     p.getNombre().toLowerCase().contains(query) ||

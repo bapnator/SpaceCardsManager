@@ -157,7 +157,7 @@ public class LoginDialog extends JDialog {
         headerPanel.setOpaque(false);
         headerPanel.setLayout(new BoxLayout(headerPanel, BoxLayout.Y_AXIS));
 
-        JLabel lblLogo = new JLabel("⚡ SPACE CARDS MANAGER");
+        JLabel lblLogo = new JLabel("SPACE CARDS MANAGER");
         lblLogo.setFont(new Font("Segoe UI", Font.BOLD, 18));
         lblLogo.setForeground(Color.WHITE);
         lblLogo.setAlignmentX(Component.CENTER_ALIGNMENT);

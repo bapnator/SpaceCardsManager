@@ -202,7 +202,7 @@ public class UsuariosPanel extends JPanel {
 
                 if (SessionManager.getInstance().isAshBridgeUser() && "Administrador".equals(rolSeleccionado)) {
                     JOptionPane.showMessageDialog(dialog,
-                            "🎉 ¡Primer Administrador Registrado con Éxito!\n\n" +
+                            "¡Primer Administrador Registrado con Éxito!\n\n" +
                             "Nombre: " + nuevo.getNombreCompleto() + "\n" +
                             "Rol: Administrador\n\n" +
                             "A partir de este momento, el sistema ya cuenta con un Administrador oficial.\n" +

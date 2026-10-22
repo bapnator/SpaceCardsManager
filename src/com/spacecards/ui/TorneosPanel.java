@@ -57,13 +57,13 @@ public class TorneosPanel extends JPanel {
         JPanel actionButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         actionButtons.setOpaque(false);
 
-        JButton btnNuevo = UITheme.createPrimaryButton("➕ Crear Torneo");
+        JButton btnNuevo = UITheme.createPrimaryButton("Crear Torneo");
         btnNuevo.addActionListener(e -> showCrearTorneoDialog());
 
-        JButton btnInscribir = UITheme.createAccentButton("👥 Inscribir Jugador");
+        JButton btnInscribir = UITheme.createAccentButton("Inscribir Jugador");
         btnInscribir.addActionListener(e -> showInscribirParticipanteDialog());
 
-        JButton btnCambiarEstado = UITheme.createSecondaryButton("⚡ Cambiar Estado");
+        JButton btnCambiarEstado = UITheme.createSecondaryButton("Cambiar Estado");
         btnCambiarEstado.addActionListener(e -> cambiarEstadoTorneo());
 
         actionButtons.add(btnNuevo);
@@ -164,7 +164,7 @@ public class TorneosPanel extends JPanel {
         }
 
         Torneo t = listTorneos.get(row);
-        lblSelectedTorneoTitle.setText("🎮 Participantes inscritos en: " + t.getNombreTorneo() +
+        lblSelectedTorneoTitle.setText("Participantes inscritos en: " + t.getNombreTorneo() +
                 " (" + t.getParticipantesInscritos() + "/" + t.getCupoMaximo() + " jugadores)");
 
         currentPartList = db.getParticipantesByTorneo(t.getIdTorneo());

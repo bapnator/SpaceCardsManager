@@ -34,7 +34,7 @@ public class SidebarPanel extends JPanel {
         headerPanel.setOpaque(false);
         headerPanel.setLayout(new BoxLayout(headerPanel, BoxLayout.Y_AXIS));
 
-        JLabel lblLogo = new JLabel("⚡ SPACE CARDS");
+        JLabel lblLogo = new JLabel("SPACE CARDS");
         lblLogo.setFont(new Font("Segoe UI", Font.BOLD, 18));
         lblLogo.setForeground(Color.WHITE);
         lblLogo.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -91,7 +91,7 @@ public class SidebarPanel extends JPanel {
         lblDbStatus.setForeground(UITheme.COLOR_SUCCESS);
         lblDbStatus.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JButton btnLogout = UITheme.createSecondaryButton("🚪 Cambiar Usuario");
+        JButton btnLogout = UITheme.createSecondaryButton("Cambiar Usuario");
         btnLogout.setFont(new Font("Segoe UI", Font.PLAIN, 11));
         btnLogout.setAlignmentX(Component.LEFT_ALIGNMENT);
         btnLogout.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
@@ -163,7 +163,7 @@ public class SidebarPanel extends JPanel {
 
     public void setCurrentUser(Usuario user) {
         if (user != null) {
-            lblUser.setText("👤 " + user.getNombreCompleto());
+            lblUser.setText(user.getNombreCompleto());
             if (user.getIdUsuario() == -1) {
                 lblRole.setText("Rol: Usuario Puente (Config)");
                 lblRole.setForeground(new Color(245, 158, 11));

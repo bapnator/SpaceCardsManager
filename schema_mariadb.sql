@@ -64,7 +64,8 @@ CREATE TABLE IF NOT EXISTS producto (
     categoria VARCHAR(50) NOT NULL,
     juego_tcg VARCHAR(50) DEFAULT 'Pokémon',
     precio_unitario DECIMAL(10,2) NOT NULL CHECK (precio_unitario >= 0),
-    stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0)
+    stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0),
+    tipo_venta VARCHAR(20) NOT NULL DEFAULT 'VENTA_NORMAL'
 ) ENGINE=InnoDB;
 
 -- ========================================================

@@ -54,9 +54,24 @@ public class DatabaseService {
     private static DatabaseService instance;
 
     private static final String DEFAULT_DB_FILE = "spacecards.db";
+        private static final String[][] SQLITE_BACKUP_TABLES = {
+            {"cliente", "id_cliente", "nombre", "apellido", "correo_electronico", "telefono", "fecha_registro"},
+            {"usuario", "id_usuario", "nombre", "apellido", "rol", "horario", "activo"},
+            {"producto", "id_producto", "codigo_barras", "nombre", "descripcion", "categoria", "juego_tcg", "precio_unitario", "stock", "tipo_venta"},
+            {"franquicia", "id_franquicia", "nombre", "fabricante", "descripcion", "activo", "fecha_registro"},
+            {"venta", "id_venta", "id_cliente", "id_usuario", "fecha_venta", "monto_total", "metodo_pago"},
+            {"detalle_venta", "id_detalle", "id_venta", "id_producto", "cantidad", "precio_historico"},
+            {"preventa", "id_preventa", "id_cliente", "id_usuario", "id_producto", "monto_anticipo", "monto_total", "fecha_solicitud", "fecha_estimada_entrega", "estado"},
+            {"torneo", "id_torneo", "id_organizador", "nombre_torneo", "juego_tcg", "fecha_evento", "costo_inscripcion", "cupo_maximo", "estado"},
+            {"participante_torneo", "id_inscripcion", "id_torneo", "id_cliente", "id_jugador_tcg", "fecha_inscripcion", "pago_confirmado", "posicion_final"}
+        };
     private String currentDbPath = DEFAULT_DB_FILE;
     private Connection connection;
+        private Connection backupConnection;
     private String connectionStatus = "Inicializando Base de Datos...";
+        private String backupStatus = "Respaldo SQLite no inicializado";
+        private boolean suspendBackupSync;
+    private boolean automaticSqliteFallback;
 
     private String dbType = "mariadb"; // "mariadb" o "sqlite"
     private String host = "100.x.y.z";
@@ -133,7 +148,9 @@ public class DatabaseService {
             boolean ok = initMariaDbConnection(host, port, dbName, user, password);
             if (!ok) {
                 System.out.println("Aviso: No se pudo conectar a MariaDB remoto (" + host + "). Activando fallback a SQLite local...");
-                return initConnection(sqlitePath);
+                boolean sqliteReady = initConnection(sqlitePath);
+                automaticSqliteFallback = sqliteReady;
+                return sqliteReady;
             }
             return true;
         } else {
@@ -145,6 +162,7 @@ public class DatabaseService {
      * Inicializa conexión remota con MariaDB (Raspberry Pi).
      */
     public synchronized boolean initMariaDbConnection(String host, int port, String dbName, String user, String password) {
+        automaticSqliteFallback = false;
         this.dbType = "mariadb";
         this.host = host;
         this.port = port;
@@ -152,6 +170,10 @@ public class DatabaseService {
         this.user = user;
         this.password = password;
         try {
+            if (backupConnection != null) {
+                try { backupConnection.close(); } catch (SQLException ignored) {}
+                backupConnection = null;
+            }
             if (connection != null && !connection.isClosed()) {
                 connection.close();
             }
@@ -166,13 +188,26 @@ public class DatabaseService {
                     "?permitMysqlScheme=true&autoReconnect=true&connectTimeout=4000&socketTimeout=10000";
             this.connection = DriverManager.getConnection(url, user, password);
 
-            createTablesIfNotExist();
+            boolean wasSuspended = suspendBackupSync;
+            suspendBackupSync = true;
+            try {
+                createTablesIfNotExist();
 
-            if (isTableEmpty("franquicia")) {
-                seedFranquicias();
+                if (isTableEmpty("franquicia")) {
+                    seedFranquicias();
+                }
+                if (isTableEmpty("producto")) {
+                    seedSampleData();
+                }
+            } finally {
+                suspendBackupSync = wasSuspended;
             }
-            if (isTableEmpty("producto")) {
-                seedSampleData();
+
+            try {
+                initializeSqliteBackup();
+                syncSqliteBackup();
+            } catch (Exception backupEx) {
+                backupStatus = "Respaldo SQLite no disponible: " + backupEx.getMessage();
             }
 
             connectionStatus = "MariaDB Remoto Activo (" + host + ":" + port + " / " + dbName + ")";
@@ -188,9 +223,14 @@ public class DatabaseService {
      * Inicializa la conexión SQLite local y crea las tablas si no existen.
      */
     public synchronized boolean initConnection(String dbPath) {
+        automaticSqliteFallback = false;
         this.dbType = "sqlite";
         this.currentDbPath = dbPath;
         try {
+            if (backupConnection != null) {
+                try { backupConnection.close(); } catch (SQLException ignored) {}
+                backupConnection = null;
+            }
             if (connection != null && !connection.isClosed()) {
                 connection.close();
             }
@@ -213,6 +253,7 @@ public class DatabaseService {
 
             File f = new File(dbPath);
             connectionStatus = "SQLite 3 Activo (" + f.getName() + " - " + (f.length() / 1024) + " KB)";
+            backupStatus = "SQLite es la base activa";
             return true;
         } catch (Exception ex) {
             connectionStatus = "Error de conexión SQLite: " + ex.getMessage();
@@ -222,24 +263,149 @@ public class DatabaseService {
     }
 
     private synchronized Connection getConnection() throws SQLException {
-        if (connection == null || connection.isClosed()) {
-            if ("mariadb".equalsIgnoreCase(dbType)) {
+        if ("mariadb".equalsIgnoreCase(dbType)) {
+            boolean remoteAvailable = false;
+            try {
+                remoteAvailable = connection != null && !connection.isClosed() && connection.isValid(2);
+            } catch (SQLException ignored) {}
+
+            if (!remoteAvailable) {
+                if (connection != null) {
+                    try { connection.close(); } catch (SQLException ignored) {}
+                }
                 String url = "jdbc:mariadb://" + host + ":" + port + "/" + dbName +
                         "?permitMysqlScheme=true&autoReconnect=true&connectTimeout=6000&socketTimeout=15000";
-                connection = DriverManager.getConnection(url, user, password);
-            } else {
-                connection = DriverManager.getConnection("jdbc:sqlite:" + currentDbPath);
-                try (Statement st = connection.createStatement()) {
-                    st.execute("PRAGMA foreign_keys = ON;");
+                try {
+                    connection = DriverManager.getConnection(url, user, password);
+                } catch (SQLException remoteFailure) {
+                    if (initConnection(sqlitePath)) {
+                        automaticSqliteFallback = true;
+                        return connection;
+                    }
+                    throw remoteFailure;
                 }
+            }
+            return connection;
+        }
+
+        if (connection == null || connection.isClosed()) {
+            connection = DriverManager.getConnection("jdbc:sqlite:" + currentDbPath);
+            try (Statement st = connection.createStatement()) {
+                st.execute("PRAGMA foreign_keys = ON;");
             }
         }
         return connection;
     }
 
+    private void initializeSqliteBackup() throws Exception {
+        if (backupConnection != null && !backupConnection.isClosed()) {
+            createTablesIfNotExist(backupConnection, "sqlite");
+            backupStatus = "Respaldo SQLite preparado";
+            return;
+        }
+        Class.forName("org.sqlite.JDBC");
+        backupConnection = DriverManager.getConnection("jdbc:sqlite:" + sqlitePath);
+        try (Statement st = backupConnection.createStatement()) {
+            st.execute("PRAGMA foreign_keys = ON;");
+        }
+        createTablesIfNotExist(backupConnection, "sqlite");
+        backupStatus = "Respaldo SQLite preparado";
+    }
+
+    private void syncSqliteBackup() {
+        if (!"mariadb".equalsIgnoreCase(dbType) || suspendBackupSync) {
+            return;
+        }
+
+        Connection source = null;
+        boolean sourceAutoCommit = true;
+        boolean sourceSnapshotStarted = false;
+        boolean backupAutoCommit = true;
+        try {
+            if (backupConnection == null || backupConnection.isClosed()) {
+                initializeSqliteBackup();
+            }
+
+            source = getConnection();
+            sourceAutoCommit = source.getAutoCommit();
+            if (sourceAutoCommit) {
+                source.setAutoCommit(false);
+                sourceSnapshotStarted = true;
+            }
+
+            backupAutoCommit = backupConnection.getAutoCommit();
+            try (Statement st = backupConnection.createStatement()) {
+                st.execute("PRAGMA foreign_keys = OFF;");
+            }
+            if (backupAutoCommit) {
+                backupConnection.setAutoCommit(false);
+            }
+
+            for (int i = SQLITE_BACKUP_TABLES.length - 1; i >= 0; i--) {
+                try (Statement st = backupConnection.createStatement()) {
+                    st.executeUpdate("DELETE FROM " + SQLITE_BACKUP_TABLES[i][0]);
+                }
+            }
+            for (String[] table : SQLITE_BACKUP_TABLES) {
+                copyTableToSqliteBackup(source, backupConnection, table);
+            }
+
+            backupConnection.commit();
+            if (sourceSnapshotStarted) {
+                source.commit();
+            }
+            backupStatus = "Respaldo SQLite sincronizado";
+        } catch (Exception ex) {
+            if (backupConnection != null) {
+                try { backupConnection.rollback(); } catch (SQLException ignored) {}
+            }
+            if (sourceSnapshotStarted && source != null) {
+                try { source.rollback(); } catch (SQLException ignored) {}
+            }
+            backupStatus = "Respaldo SQLite desactualizado: " + ex.getMessage();
+            System.err.println(backupStatus);
+        } finally {
+            if (backupConnection != null) {
+                try {
+                    if (backupConnection.getAutoCommit() != backupAutoCommit) {
+                        backupConnection.setAutoCommit(backupAutoCommit);
+                    }
+                    try (Statement st = backupConnection.createStatement()) {
+                        st.execute("PRAGMA foreign_keys = ON;");
+                    }
+                } catch (SQLException ignored) {}
+            }
+            if (sourceSnapshotStarted && source != null) {
+                try { source.setAutoCommit(sourceAutoCommit); } catch (SQLException ignored) {}
+            }
+        }
+    }
+
+    private void copyTableToSqliteBackup(Connection source, Connection target, String[] table) throws SQLException {
+        String tableName = table[0];
+        String columns = String.join(", ", Arrays.copyOfRange(table, 1, table.length));
+        String placeholders = String.join(", ", Collections.nCopies(table.length - 1, "?"));
+        String insertSql = "INSERT INTO " + tableName + " (" + columns + ") VALUES (" + placeholders + ")";
+
+        try (Statement sourceStatement = source.createStatement();
+             ResultSet rows = sourceStatement.executeQuery("SELECT " + columns + " FROM " + tableName);
+             PreparedStatement insert = target.prepareStatement(insertSql)) {
+            while (rows.next()) {
+                for (int i = 1; i < table.length; i++) {
+                    insert.setString(i, rows.getString(i));
+                }
+                insert.executeUpdate();
+            }
+        }
+    }
+
     private void createTablesIfNotExist() throws SQLException {
-        try (Statement st = getConnection().createStatement()) {
-            if ("mariadb".equalsIgnoreCase(dbType)) {
+        createTablesIfNotExist(getConnection(), dbType);
+    }
+
+    private void createTablesIfNotExist(Connection targetConnection, String targetDbType) throws SQLException {
+        try (Statement st = targetConnection.createStatement()) {
+            if ("mariadb".equalsIgnoreCase(targetDbType)) {
                 // TABLA: CLIENTE (MariaDB)
                 st.execute("CREATE TABLE IF NOT EXISTS cliente (" +
                         "id_cliente INT AUTO_INCREMENT PRIMARY KEY," +
@@ -267,7 +433,8 @@ public class DatabaseService {
                         "categoria VARCHAR(50) NOT NULL," +
                         "juego_tcg VARCHAR(50) DEFAULT 'Pokémon'," +
                         "precio_unitario DECIMAL(10,2) NOT NULL CHECK (precio_unitario >= 0)," +
-                        "stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0)) ENGINE=InnoDB;");
+                        "stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0)," +
+                        "tipo_venta VARCHAR(20) NOT NULL DEFAULT 'VENTA_NORMAL') ENGINE=InnoDB;");
 
                 // TABLA: VENTA (MariaDB)
                 st.execute("CREATE TABLE IF NOT EXISTS venta (" +
@@ -367,7 +534,8 @@ public class DatabaseService {
                         "categoria VARCHAR(50) NOT NULL," +
                         "juego_tcg VARCHAR(50) DEFAULT 'Pokémon'," +
                         "precio_unitario DECIMAL(10,2) NOT NULL CHECK (precio_unitario >= 0)," +
-                        "stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0));");
+                        "stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0)," +
+                        "tipo_venta VARCHAR(20) NOT NULL DEFAULT 'VENTA_NORMAL');");
 
                 // TABLA: VENTA (SQLite)
                 st.execute("CREATE TABLE IF NOT EXISTS venta (" +
@@ -441,6 +609,17 @@ public class DatabaseService {
                         "fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP);");
             }
         }
+        ensureProductSaleTypeColumn(targetConnection);
+    }
+
+    private void ensureProductSaleTypeColumn(Connection targetConnection) throws SQLException {
+        try (Statement st = targetConnection.createStatement()) {
+            st.executeQuery("SELECT tipo_venta FROM producto LIMIT 0").close();
+        } catch (SQLException missingColumn) {
+            try (Statement st = targetConnection.createStatement()) {
+                st.executeUpdate("ALTER TABLE producto ADD COLUMN tipo_venta VARCHAR(20) NOT NULL DEFAULT 'VENTA_NORMAL'");
+            }
+        }
     }
 
     private boolean isTableEmpty(String tableName) {
@@ -474,16 +653,20 @@ public class DatabaseService {
                     "Carta individual ultra rara de Scarlet & Violet 151", "Single Card", "Pokémon", new BigDecimal("145.00"), 4));
             addProducto(new Producto(0, "7501002", "Scarlet & Violet: 151 Booster Bundle",
                     "Caja sellada con 6 paquetes de mejora de 151", "Booster Box", "Pokémon", new BigDecimal("38.50"), 18));
-            addProducto(new Producto(0, "7501003", "Prismatic Evolutions Elite Trainer Box",
-                    "ETB especial con micas de Eevee, dados y 9 sobres", "Elite Trainer Box", "Pokémon", new BigDecimal("59.99"), 12));
+                Producto prismaticEtb = new Producto(0, "7501003", "Prismatic Evolutions Elite Trainer Box",
+                    "ETB especial con micas de Eevee, dados y 9 sobres", "Elite Trainer Box", "Pokémon", new BigDecimal("59.99"), 0);
+                prismaticEtb.setTipoVenta(Producto.TIPO_PREVENTA);
+                addProducto(prismaticEtb);
             addProducto(new Producto(0, "7501004", "Dragon Shield Sleeves Matte (Emerald)",
                     "Paquete de 100 micas tamaño estándar textura mate", "Sleeves", "Pokémon", new BigDecimal("12.50"), 35));
             addProducto(new Producto(0, "7501005", "Pikachu Ultra Pro Deck Box Alcove",
                     "Caja porta baraja de cuero sintético con cierre magnético", "Deck", "Pokémon", new BigDecimal("24.00"), 15));
             addProducto(new Producto(0, "7501006", "Mewtwo VSTAR Universe Secret Rare",
                     "Carta japonesa en condición Mint graduable", "Single Card", "Pokémon", new BigDecimal("85.00"), 3));
-            addProducto(new Producto(0, "7501007", "Surging Sparks Booster Box (36 Sobres)",
-                    "Caja completa de sobres sellada de fábrica con Pikachu ex tera", "Booster Box", "Pokémon", new BigDecimal("149.99"), 8));
+                Producto surgingSparksBox = new Producto(0, "7501007", "Surging Sparks Booster Box (36 Sobres)",
+                    "Caja completa de sobres sellada de fábrica con Pikachu ex tera", "Booster Box", "Pokémon", new BigDecimal("149.99"), 0);
+                surgingSparksBox.setTipoVenta(Producto.TIPO_PREVENTA);
+                addProducto(surgingSparksBox);
 
             // 4. Preventas
             List<Cliente> clis = getClientes();
@@ -594,6 +777,7 @@ public class DatabaseService {
         } catch (SQLException ex) {
             throw new RuntimeException("Error al agregar cliente: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     public synchronized void updateCliente(Cliente c) {
@@ -608,6 +792,7 @@ public class DatabaseService {
         } catch (SQLException ex) {
             throw new RuntimeException("Error al actualizar cliente: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     public synchronized void deleteCliente(int idCliente) {
@@ -618,6 +803,7 @@ public class DatabaseService {
         } catch (SQLException ex) {
             throw new RuntimeException("Error al eliminar cliente: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     public synchronized Cliente findClienteById(int idCliente) {
@@ -684,6 +870,7 @@ public class DatabaseService {
         } catch (SQLException ex) {
             throw new RuntimeException("Error al agregar usuario: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     public synchronized void updateUsuario(Usuario u) {
@@ -699,6 +886,7 @@ public class DatabaseService {
         } catch (SQLException ex) {
             throw new RuntimeException("Error al actualizar usuario: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     public synchronized void deleteUsuario(int idUsuario) {
@@ -709,6 +897,7 @@ public class DatabaseService {
         } catch (SQLException ex) {
             throw new RuntimeException("Error al eliminar usuario: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     public static final Usuario ASH_BRIDGE_USER = new Usuario(
@@ -756,7 +945,7 @@ public class DatabaseService {
 
     public synchronized List<Producto> getProductos() {
         List<Producto> list = new ArrayList<>();
-        String sql = "SELECT id_producto, codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, stock FROM producto ORDER BY id_producto ASC";
+        String sql = "SELECT id_producto, codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, stock, tipo_venta FROM producto ORDER BY id_producto ASC";
         try (Statement st = getConnection().createStatement();
              ResultSet rs = st.executeQuery(sql)) {
             while (rs.next()) {
@@ -769,6 +958,7 @@ public class DatabaseService {
                 p.setJuegoTcg(rs.getString("juego_tcg"));
                 p.setPrecioUnitario(rs.getBigDecimal("precio_unitario"));
                 p.setStock(rs.getInt("stock"));
+                p.setTipoVenta(rs.getString("tipo_venta"));
                 list.add(p);
             }
         } catch (SQLException ex) {
@@ -778,7 +968,7 @@ public class DatabaseService {
     }
 
     public synchronized void addProducto(Producto p) {
-        String sql = "INSERT INTO producto (codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, stock) VALUES (?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO producto (codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, stock, tipo_venta) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = getConnection().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, p.getCodigoBarras());
             ps.setString(2, p.getNombre());
@@ -787,6 +977,7 @@ public class DatabaseService {
             ps.setString(5, p.getJuegoTcg() != null ? p.getJuegoTcg() : "Pokémon");
             ps.setBigDecimal(6, p.getPrecioUnitario());
             ps.setInt(7, p.getStock());
+            ps.setString(8, p.getTipoVenta());
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (keys.next()) {
@@ -796,10 +987,11 @@ public class DatabaseService {
         } catch (SQLException ex) {
             throw new RuntimeException("Error al agregar producto: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     public synchronized void updateProducto(Producto p) {
-        String sql = "UPDATE producto SET codigo_barras = ?, nombre = ?, descripcion = ?, categoria = ?, juego_tcg = ?, precio_unitario = ?, stock = ? WHERE id_producto = ?";
+        String sql = "UPDATE producto SET codigo_barras = ?, nombre = ?, descripcion = ?, categoria = ?, juego_tcg = ?, precio_unitario = ?, stock = ?, tipo_venta = ? WHERE id_producto = ?";
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
             ps.setString(1, p.getCodigoBarras());
             ps.setString(2, p.getNombre());
@@ -808,11 +1000,13 @@ public class DatabaseService {
             ps.setString(5, p.getJuegoTcg());
             ps.setBigDecimal(6, p.getPrecioUnitario());
             ps.setInt(7, p.getStock());
-            ps.setInt(8, p.getIdProducto());
+            ps.setString(8, p.getTipoVenta());
+            ps.setInt(9, p.getIdProducto());
             ps.executeUpdate();
         } catch (SQLException ex) {
             throw new RuntimeException("Error al actualizar producto: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     public synchronized void deleteProducto(int idProducto) {
@@ -823,10 +1017,11 @@ public class DatabaseService {
         } catch (SQLException ex) {
             throw new RuntimeException("Error al eliminar producto: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     public synchronized Producto findProductoById(int idProducto) {
-        String sql = "SELECT id_producto, codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, stock FROM producto WHERE id_producto = ?";
+        String sql = "SELECT id_producto, codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, stock, tipo_venta FROM producto WHERE id_producto = ?";
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
             ps.setInt(1, idProducto);
             try (ResultSet rs = ps.executeQuery()) {
@@ -840,6 +1035,7 @@ public class DatabaseService {
                     p.setJuegoTcg(rs.getString("juego_tcg"));
                     p.setPrecioUnitario(rs.getBigDecimal("precio_unitario"));
                     p.setStock(rs.getInt("stock"));
+                    p.setTipoVenta(rs.getString("tipo_venta"));
                     return p;
                 }
             }
@@ -916,6 +1112,7 @@ public class DatabaseService {
             }
             throw new Exception("Error al registrar franquicia: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     public synchronized void updateFranquicia(Franquicia f, String oldName) throws Exception {
@@ -950,6 +1147,7 @@ public class DatabaseService {
             }
             throw new Exception("Error al actualizar franquicia: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     public synchronized int countProductosByFranquicia(String nombreFranquicia) {
@@ -997,6 +1195,7 @@ public class DatabaseService {
         } catch (SQLException ex) {
             throw new Exception("Error al eliminar franquicia: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     public synchronized Franquicia findFranquiciaById(int idFranquicia) {
@@ -1137,7 +1336,7 @@ public class DatabaseService {
             conn.setAutoCommit(false);
 
             // 1. Validar stock en base de datos
-            String sqlCheckStock = "SELECT stock, nombre FROM producto WHERE id_producto = ?";
+            String sqlCheckStock = "SELECT stock, nombre, tipo_venta FROM producto WHERE id_producto = ?";
             for (DetalleVenta d : v.getDetalles()) {
                 try (PreparedStatement psStock = conn.prepareStatement(sqlCheckStock)) {
                     psStock.setInt(1, d.getIdProducto());
@@ -1147,6 +1346,9 @@ public class DatabaseService {
                         }
                         int stockActual = rs.getInt("stock");
                         String nom = rs.getString("nombre");
+                        if (Producto.TIPO_PREVENTA.equalsIgnoreCase(rs.getString("tipo_venta"))) {
+                            throw new Exception("El producto '" + nom + "' está marcado como preventa y no puede registrarse en el punto de venta.");
+                        }
                         if (stockActual < d.getCantidad()) {
                             throw new Exception("Stock insuficiente para '" + nom + "' (Disponible: " + stockActual + ", Solicitado: " + d.getCantidad() + ")");
                         }
@@ -1220,6 +1422,7 @@ public class DatabaseService {
         } finally {
             conn.setAutoCommit(originalAutoCommit);
         }
+        syncSqliteBackup();
     }
 
     // =========================================================================
@@ -1283,6 +1486,18 @@ public class DatabaseService {
     }
 
     public synchronized void addPreventa(Preventa p) {
+        String sqlTipoProducto = "SELECT tipo_venta FROM producto WHERE id_producto = ?";
+        try (PreparedStatement ps = getConnection().prepareStatement(sqlTipoProducto)) {
+            ps.setInt(1, p.getIdProducto());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next() || !Producto.TIPO_PREVENTA.equalsIgnoreCase(rs.getString("tipo_venta"))) {
+                    throw new IllegalArgumentException("El producto debe estar marcado como preventa para registrar una reserva.");
+                }
+            }
+        } catch (SQLException ex) {
+            throw new RuntimeException("Error al validar producto de preventa: " + ex.getMessage(), ex);
+        }
+
         String sql = "INSERT INTO preventa (id_cliente, id_usuario, id_producto, monto_anticipo, monto_total, fecha_solicitud, fecha_estimada_entrega, estado) " +
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = getConnection().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -1305,6 +1520,7 @@ public class DatabaseService {
         } catch (SQLException ex) {
             throw new RuntimeException("Error al agregar preventa: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     public synchronized void updatePreventaEstado(int idPreventa, String nuevoEstado) {
@@ -1316,6 +1532,7 @@ public class DatabaseService {
         } catch (SQLException ex) {
             throw new RuntimeException("Error al actualizar preventa: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     // =========================================================================
@@ -1381,6 +1598,7 @@ public class DatabaseService {
         } catch (SQLException ex) {
             throw new RuntimeException("Error al agregar torneo: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     public synchronized void updateTorneoEstado(int idTorneo, String nuevoEstado) {
@@ -1392,6 +1610,7 @@ public class DatabaseService {
         } catch (SQLException ex) {
             throw new RuntimeException("Error al actualizar torneo: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     public synchronized Torneo findTorneoById(int idTorneo) {
@@ -1486,6 +1705,7 @@ public class DatabaseService {
         } catch (SQLException ex) {
             throw new Exception("Error al inscribir participante: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     public synchronized void eliminarParticipante(int idInscripcion) {
@@ -1496,6 +1716,7 @@ public class DatabaseService {
         } catch (SQLException ex) {
             throw new RuntimeException("Error al cancelar inscripción: " + ex.getMessage(), ex);
         }
+        syncSqliteBackup();
     }
 
     // =========================================================================
@@ -1517,36 +1738,43 @@ public class DatabaseService {
     }
 
     public synchronized void resetDatabase() throws SQLException {
-        try (Statement st = getConnection().createStatement()) {
-            if ("mariadb".equalsIgnoreCase(dbType)) {
-                st.execute("SET FOREIGN_KEY_CHECKS = 0;");
-                st.execute("DROP TABLE IF EXISTS participante_torneo;");
-                st.execute("DROP TABLE IF EXISTS torneo;");
-                st.execute("DROP TABLE IF EXISTS preventa;");
-                st.execute("DROP TABLE IF EXISTS detalle_venta;");
-                st.execute("DROP TABLE IF EXISTS venta;");
-                st.execute("DROP TABLE IF EXISTS producto;");
-                st.execute("DROP TABLE IF EXISTS franquicia;");
-                st.execute("DROP TABLE IF EXISTS usuario;");
-                st.execute("DROP TABLE IF EXISTS cliente;");
-                st.execute("SET FOREIGN_KEY_CHECKS = 1;");
-            } else {
-                st.execute("PRAGMA foreign_keys = OFF;");
-                st.execute("DROP TABLE IF EXISTS participante_torneo;");
-                st.execute("DROP TABLE IF EXISTS torneo;");
-                st.execute("DROP TABLE IF EXISTS preventa;");
-                st.execute("DROP TABLE IF EXISTS detalle_venta;");
-                st.execute("DROP TABLE IF EXISTS venta;");
-                st.execute("DROP TABLE IF EXISTS producto;");
-                st.execute("DROP TABLE IF EXISTS franquicia;");
-                st.execute("DROP TABLE IF EXISTS usuario;");
-                st.execute("DROP TABLE IF EXISTS cliente;");
-                st.execute("PRAGMA foreign_keys = ON;");
+        boolean wasSuspended = suspendBackupSync;
+        suspendBackupSync = true;
+        try {
+            try (Statement st = getConnection().createStatement()) {
+                if ("mariadb".equalsIgnoreCase(dbType)) {
+                    st.execute("SET FOREIGN_KEY_CHECKS = 0;");
+                    st.execute("DROP TABLE IF EXISTS participante_torneo;");
+                    st.execute("DROP TABLE IF EXISTS torneo;");
+                    st.execute("DROP TABLE IF EXISTS preventa;");
+                    st.execute("DROP TABLE IF EXISTS detalle_venta;");
+                    st.execute("DROP TABLE IF EXISTS venta;");
+                    st.execute("DROP TABLE IF EXISTS producto;");
+                    st.execute("DROP TABLE IF EXISTS franquicia;");
+                    st.execute("DROP TABLE IF EXISTS usuario;");
+                    st.execute("DROP TABLE IF EXISTS cliente;");
+                    st.execute("SET FOREIGN_KEY_CHECKS = 1;");
+                } else {
+                    st.execute("PRAGMA foreign_keys = OFF;");
+                    st.execute("DROP TABLE IF EXISTS participante_torneo;");
+                    st.execute("DROP TABLE IF EXISTS torneo;");
+                    st.execute("DROP TABLE IF EXISTS preventa;");
+                    st.execute("DROP TABLE IF EXISTS detalle_venta;");
+                    st.execute("DROP TABLE IF EXISTS venta;");
+                    st.execute("DROP TABLE IF EXISTS producto;");
+                    st.execute("DROP TABLE IF EXISTS franquicia;");
+                    st.execute("DROP TABLE IF EXISTS usuario;");
+                    st.execute("DROP TABLE IF EXISTS cliente;");
+                    st.execute("PRAGMA foreign_keys = ON;");
+                }
             }
+            createTablesIfNotExist();
+            seedFranquicias();
+            seedSampleData();
+        } finally {
+            suspendBackupSync = wasSuspended;
         }
-        createTablesIfNotExist();
-        seedFranquicias();
-        seedSampleData();
+        syncSqliteBackup();
     }
 
     public synchronized QueryResult executeCustomQuery(String sql) throws Exception {
@@ -1572,6 +1800,7 @@ public class DatabaseService {
             } else {
                 int affected = st.executeUpdate(sql);
                 qr.message = "Sentencia ejecutada exitosamente. Filas afectadas: " + affected;
+                syncSqliteBackup();
             }
         }
         return qr;
@@ -1594,7 +1823,7 @@ public class DatabaseService {
         if ("mariadb".equalsIgnoreCase(dbType)) {
             try {
                 if (connection != null && !connection.isClosed()) {
-                    return "MariaDB Remoto Activo (" + host + ":" + port + " / " + dbName + ")";
+                    return "MariaDB Remoto Activo (" + host + ":" + port + " / " + dbName + ") | " + backupStatus;
                 }
             } catch (Exception ignored) {}
             return connectionStatus;
@@ -1602,6 +1831,9 @@ public class DatabaseService {
         File f = new File(currentDbPath);
         if (f.exists()) {
             long kb = f.length() / 1024;
+            if (automaticSqliteFallback) {
+                return "MariaDB no disponible; usando respaldo SQLite (" + f.getName() + ")";
+            }
             return "SQLite 3 Activo (" + f.getName() + " - " + (kb > 0 ? kb + " KB" : f.length() + " bytes") + ")";
         }
         return connectionStatus;

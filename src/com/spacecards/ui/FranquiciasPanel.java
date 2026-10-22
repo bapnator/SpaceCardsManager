@@ -62,16 +62,16 @@ public class FranquiciasPanel extends JPanel {
         JPanel actionButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         actionButtons.setOpaque(false);
 
-        JButton btnNuevo = UITheme.createPrimaryButton("➕ Registrar Franquicia");
+        JButton btnNuevo = UITheme.createPrimaryButton("Registrar Franquicia");
         btnNuevo.addActionListener(e -> showFranquiciaDialog(null));
 
-        JButton btnEditar = UITheme.createSecondaryButton("✏️ Editar");
+        JButton btnEditar = UITheme.createSecondaryButton("Editar");
         btnEditar.addActionListener(e -> editSelectedFranquicia());
 
-        JButton btnToggle = UITheme.createSecondaryButton("🔄 Activar / Desactivar");
+        JButton btnToggle = UITheme.createSecondaryButton("Activar / Desactivar");
         btnToggle.addActionListener(e -> toggleActivo());
 
-        JButton btnEliminar = UITheme.createSecondaryButton("🗑️ Eliminar");
+        JButton btnEliminar = UITheme.createSecondaryButton("Eliminar");
         btnEliminar.addActionListener(e -> deleteSelectedFranquicia());
 
         actionButtons.add(btnNuevo);
@@ -89,10 +89,10 @@ public class FranquiciasPanel extends JPanel {
         // Tarjetas KPI de Resumen
         JPanel statsGrid = new JPanel(new GridLayout(1, 4, 14, 0));
         statsGrid.setOpaque(false);
-        statsGrid.add(createKpiCard("🎴 Total Franquicias", lblTotal, UITheme.COLOR_PRIMARY));
-        statsGrid.add(createKpiCard("🟢 Franquicias Activas", lblActivas, UITheme.COLOR_SUCCESS));
-        statsGrid.add(createKpiCard("📦 Productos Asociados", lblProds, UITheme.COLOR_ACCENT));
-        statsGrid.add(createKpiCard("🏆 Torneos Vinculados", lblTorneos, new Color(168, 85, 247)));
+        statsGrid.add(createKpiCard("Total Franquicias", lblTotal, UITheme.COLOR_PRIMARY));
+        statsGrid.add(createKpiCard("Franquicias Activas", lblActivas, UITheme.COLOR_SUCCESS));
+        statsGrid.add(createKpiCard("Productos Asociados", lblProds, UITheme.COLOR_ACCENT));
+        statsGrid.add(createKpiCard("Torneos Vinculados", lblTorneos, new Color(168, 85, 247)));
         centerPanel.add(statsGrid, BorderLayout.NORTH);
 
         // Card Contenedor con Filtros y Tabla
@@ -192,7 +192,7 @@ public class FranquiciasPanel extends JPanel {
                         (f.getFabricante() != null && !f.getFabricante().isEmpty()) ? f.getFabricante() : "-",
                         pCount + " producto(s)",
                         tCount + " torneo(s)",
-                        f.isActivo() ? "🟢 Activa" : "🔴 Inactiva",
+                        f.isActivo() ? "Activa" : "Inactiva",
                         f.getFechaRegistro() != null ? f.getFechaRegistro().format(fmt) : "-",
                         f.getDescripcion() != null ? f.getDescripcion() : ""
                 });
@@ -248,7 +248,7 @@ public class FranquiciasPanel extends JPanel {
         dialog.add(form, BorderLayout.CENTER);
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton btnGuardar = UITheme.createPrimaryButton("💾 Guardar");
+        JButton btnGuardar = UITheme.createPrimaryButton("Guardar");
         btnGuardar.addActionListener(e -> {
             String nom = txtNombre.getText().trim();
             String fab = txtFabricante.getText().trim();
@@ -336,7 +336,7 @@ public class FranquiciasPanel extends JPanel {
             refreshTable();
             if (onDataChanged != null) onDataChanged.run();
             JOptionPane.showMessageDialog(this,
-                    "La franquicia '" + f.getNombre() + "' ahora está " + (f.isActivo() ? "🟢 ACTIVA" : "🔴 INACTIVA") + ".",
+                    "La franquicia '" + f.getNombre() + "' ahora está " + (f.isActivo() ? "ACTIVA" : "INACTIVA") + ".",
                     "Estado Actualizado", JOptionPane.INFORMATION_MESSAGE);
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
@@ -356,7 +356,7 @@ public class FranquiciasPanel extends JPanel {
 
         if (prods > 0 || torneos > 0) {
             JOptionPane.showMessageDialog(this,
-                    "⚠️ No es posible eliminar la franquicia '" + f.getNombre() + "':\n\n" +
+                    "No es posible eliminar la franquicia '" + f.getNombre() + "':\n\n" +
                     "• Tiene " + prods + " producto(s) en catálogo.\n" +
                     "• Tiene " + torneos + " torneo(s) registrados.\n\n" +
                     "Para mantener la integridad histórica de la base de datos, puedes usar la opción 'Activar / Desactivar' para ocultarla de nuevas selecciones.",

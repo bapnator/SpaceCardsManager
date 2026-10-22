@@ -218,7 +218,7 @@ public class DatabasePanel extends JPanel {
                 queryResultModel.addRow(row);
             }
 
-            lblQueryStatus.setText("✅ " + qr.message + " (" + elapsed + " ms)");
+            lblQueryStatus.setText(qr.message + " (" + elapsed + " ms)");
             lblQueryStatus.setForeground(UITheme.COLOR_SUCCESS);
             refreshPanel();
             if (onStatusChange != null) onStatusChange.run();

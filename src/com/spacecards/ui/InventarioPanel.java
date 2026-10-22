@@ -106,7 +106,7 @@ public class InventarioPanel extends JPanel {
 
         // Tabla
         tableModel = new DefaultTableModel(new String[]{
-                "ID", "Código Barras", "Nombre del Producto", "Categoría", "Juego TCG", "Precio Unit.", "Stock", "Estado"
+            "ID", "Código Barras", "Nombre del Producto", "Categoría", "Juego TCG", "Precio Unit.", "Stock", "Modalidad", "Estado"
         }, 0) {
             @Override
             public boolean isCellEditable(int row, int col) { return false; }
@@ -171,13 +171,15 @@ public class InventarioPanel extends JPanel {
                     (p.getDescripcion() != null && p.getDescripcion().toLowerCase().contains(query));
 
             boolean matchStock = true;
-            if ("Con stock (> 0)".equals(stockFilter)) matchStock = p.getStock() > 0;
+            if (p.isPreventa()) matchStock = "Todos".equals(stockFilter);
+            else if ("Con stock (> 0)".equals(stockFilter)) matchStock = p.getStock() > 0;
             else if ("Stock crítico (<= 5)".equals(stockFilter)) matchStock = p.getStock() > 0 && p.getStock() <= 5;
             else if ("Agotado (0)".equals(stockFilter)) matchStock = p.getStock() == 0;
 
             if (matchCat && matchJuego && matchQuery && matchStock) {
                 filteredList.add(p);
-                String estadoStock = p.getStock() == 0 ? "Agotado" : (p.getStock() <= 5 ? "Crítico" : "Disponible");
+                String estadoStock = p.isPreventa() ? "No disponible para venta" :
+                        (p.getStock() == 0 ? "Agotado" : (p.getStock() <= 5 ? "Crítico" : "Disponible"));
                 tableModel.addRow(new Object[]{
                         p.getIdProducto(),
                         p.getCodigoBarras() != null ? p.getCodigoBarras() : "-",
@@ -185,7 +187,8 @@ public class InventarioPanel extends JPanel {
                         p.getCategoria(),
                         p.getJuegoTcg(),
                         "$" + p.getPrecioUnitario(),
-                        p.getStock(),
+                        p.isPreventa() ? "-" : p.getStock(),
+                        p.isPreventa() ? "Preventa" : "Venta normal",
                         estadoStock
                 });
             }
@@ -196,7 +199,7 @@ public class InventarioPanel extends JPanel {
         boolean isEdit = (p != null);
         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this),
                 isEdit ? "Editar Producto" : "PantallaCrearRegistroProducto", true);
-        dialog.setSize(480, 480);
+        dialog.setSize(500, 550);
         dialog.setLocationRelativeTo(this);
         dialog.setLayout(new BorderLayout(12, 12));
 
@@ -223,6 +226,26 @@ public class InventarioPanel extends JPanel {
 
         JTextField txtPrecio = new JTextField(isEdit ? p.getPrecioUnitario().toString() : "0.00");
         JSpinner spinStock = new JSpinner(new SpinnerNumberModel(isEdit ? p.getStock() : 1, 0, 9999, 1));
+        JComboBox<String> cmbTipoVenta = new JComboBox<>(new String[]{"Venta normal", "Preventa"});
+        if (isEdit) cmbTipoVenta.setSelectedItem(p.isPreventa() ? "Preventa" : "Venta normal");
+        JLabel lblStock = new JLabel("Stock real:");
+        spinStock.setEnabled(!"Preventa".equals(cmbTipoVenta.getSelectedItem()));
+        if (!spinStock.isEnabled()) lblStock.setText("Stock real (no aplica):");
+        cmbTipoVenta.addActionListener(e -> {
+            boolean isPreventa = "Preventa".equals(cmbTipoVenta.getSelectedItem());
+            if (isPreventa && ((Number) spinStock.getValue()).intValue() > 0) {
+                int confirm = JOptionPane.showConfirmDialog(dialog,
+                        "Al cambiar a preventa se eliminará el stock real registrado. ¿Deseas continuar?",
+                        "Confirmar cambio", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                if (confirm != JOptionPane.YES_OPTION) {
+                    cmbTipoVenta.setSelectedItem("Venta normal");
+                    return;
+                }
+                spinStock.setValue(0);
+            }
+            spinStock.setEnabled(!isPreventa);
+            lblStock.setText(isPreventa ? "Stock real (no aplica):" : "Stock real:");
+        });
         JTextArea txtDesc = new JTextArea(isEdit ? p.getDescripcion() : "", 3, 20);
         txtDesc.setLineWrap(true);
 
@@ -252,11 +275,16 @@ public class InventarioPanel extends JPanel {
         form.add(txtPrecio, gbc);
 
         gbc.gridx = 0; gbc.gridy = 5;
-        form.add(new JLabel("Stock Inicial:*"), gbc);
+        form.add(new JLabel("Modalidad:*"), gbc);
+        gbc.gridx = 1;
+        form.add(cmbTipoVenta, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 6;
+        form.add(lblStock, gbc);
         gbc.gridx = 1;
         form.add(spinStock, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 6;
+        gbc.gridx = 0; gbc.gridy = 7;
         form.add(new JLabel("Descripción:"), gbc);
         gbc.gridx = 1;
         form.add(new JScrollPane(txtDesc), gbc);
@@ -281,7 +309,9 @@ public class InventarioPanel extends JPanel {
                 return;
             }
 
-            int stockVal = (int) spinStock.getValue();
+            boolean isPreventa = "Preventa".equals(cmbTipoVenta.getSelectedItem());
+            int stockVal = isPreventa ? 0 : (int) spinStock.getValue();
+            String tipoVenta = isPreventa ? Producto.TIPO_PREVENTA : Producto.TIPO_VENTA_NORMAL;
 
             if (isEdit) {
                 p.setCodigoBarras(txtCode.getText().trim());
@@ -290,11 +320,13 @@ public class InventarioPanel extends JPanel {
                 p.setJuegoTcg((String) cmbGame.getSelectedItem());
                 p.setPrecioUnitario(precio);
                 p.setStock(stockVal);
+                p.setTipoVenta(tipoVenta);
                 p.setDescripcion(txtDesc.getText().trim());
                 db.updateProducto(p);
             } else {
                 Producto nuevo = new Producto(0, txtCode.getText().trim(), name, txtDesc.getText().trim(),
                         (String) cmbCat.getSelectedItem(), (String) cmbGame.getSelectedItem(), precio, stockVal);
+                nuevo.setTipoVenta(tipoVenta);
                 db.addProducto(nuevo);
             }
 
