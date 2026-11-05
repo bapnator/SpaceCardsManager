@@ -57,7 +57,8 @@ public class DatabaseService {
         private static final String[][] SQLITE_BACKUP_TABLES = {
             {"cliente", "id_cliente", "nombre", "apellido", "correo_electronico", "telefono", "fecha_registro"},
             {"usuario", "id_usuario", "nombre", "apellido", "rol", "horario", "activo"},
-            {"producto", "id_producto", "codigo_barras", "nombre", "descripcion", "categoria", "juego_tcg", "precio_unitario", "stock", "tipo_venta"},
+            {"producto", "id_producto", "codigo_barras", "nombre", "descripcion", "categoria", "juego_tcg", "precio_unitario", "stock", "tipo_venta", "fecha_salida"},
+            {"categoria_producto", "id_categoria", "nombre", "descripcion", "activo", "fecha_registro"},
             {"franquicia", "id_franquicia", "nombre", "fabricante", "descripcion", "activo", "fecha_registro"},
             {"venta", "id_venta", "id_cliente", "id_usuario", "fecha_venta", "monto_total", "metodo_pago"},
             {"detalle_venta", "id_detalle", "id_venta", "id_producto", "cantidad", "precio_historico"},
@@ -434,7 +435,15 @@ public class DatabaseService {
                         "juego_tcg VARCHAR(50) DEFAULT 'Pokémon'," +
                         "precio_unitario DECIMAL(10,2) NOT NULL CHECK (precio_unitario >= 0)," +
                         "stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0)," +
-                        "tipo_venta VARCHAR(20) NOT NULL DEFAULT 'VENTA_NORMAL') ENGINE=InnoDB;");
+                        "tipo_venta VARCHAR(20) NOT NULL DEFAULT 'VENTA_NORMAL'," +
+                        "fecha_salida DATE NULL) ENGINE=InnoDB;");
+
+                    st.execute("CREATE TABLE IF NOT EXISTS categoria_producto (" +
+                        "id_categoria INT AUTO_INCREMENT PRIMARY KEY," +
+                        "nombre VARCHAR(80) NOT NULL UNIQUE," +
+                        "descripcion TEXT," +
+                        "activo BOOLEAN NOT NULL DEFAULT 1," +
+                        "fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB;");
 
                 // TABLA: VENTA (MariaDB)
                 st.execute("CREATE TABLE IF NOT EXISTS venta (" +
@@ -535,7 +544,15 @@ public class DatabaseService {
                         "juego_tcg VARCHAR(50) DEFAULT 'Pokémon'," +
                         "precio_unitario DECIMAL(10,2) NOT NULL CHECK (precio_unitario >= 0)," +
                         "stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0)," +
-                        "tipo_venta VARCHAR(20) NOT NULL DEFAULT 'VENTA_NORMAL');");
+                        "tipo_venta VARCHAR(20) NOT NULL DEFAULT 'VENTA_NORMAL'," +
+                        "fecha_salida DATE NULL);");
+
+                    st.execute("CREATE TABLE IF NOT EXISTS categoria_producto (" +
+                        "id_categoria INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "nombre VARCHAR(80) NOT NULL UNIQUE," +
+                        "descripcion TEXT," +
+                        "activo BOOLEAN NOT NULL DEFAULT 1," +
+                        "fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP);");
 
                 // TABLA: VENTA (SQLite)
                 st.execute("CREATE TABLE IF NOT EXISTS venta (" +
@@ -610,6 +627,8 @@ public class DatabaseService {
             }
         }
         ensureProductSaleTypeColumn(targetConnection);
+        ensureProductReleaseDateColumn(targetConnection);
+        ensureDefaultProductCategories(targetConnection);
     }
 
     private void ensureProductSaleTypeColumn(Connection targetConnection) throws SQLException {
@@ -618,6 +637,57 @@ public class DatabaseService {
         } catch (SQLException missingColumn) {
             try (Statement st = targetConnection.createStatement()) {
                 st.executeUpdate("ALTER TABLE producto ADD COLUMN tipo_venta VARCHAR(20) NOT NULL DEFAULT 'VENTA_NORMAL'");
+            }
+        }
+    }
+
+    private void ensureProductReleaseDateColumn(Connection targetConnection) throws SQLException {
+        try (Statement st = targetConnection.createStatement()) {
+            st.executeQuery("SELECT fecha_salida FROM producto LIMIT 0").close();
+        } catch (SQLException missingColumn) {
+            try (Statement st = targetConnection.createStatement()) {
+                st.executeUpdate("ALTER TABLE producto ADD COLUMN fecha_salida DATE NULL");
+            }
+        }
+    }
+
+    private void ensureDefaultProductCategories(Connection targetConnection) throws SQLException {
+        String[][] defaults = {
+                {"Carta individual", "Cartas individuales coleccionables."},
+                {"Caja de sobres", "Cajas y paquetes de sobres."},
+                {"Caja de entrenador elite", "Cajas de entrenador elite y productos equivalentes."},
+                {"Fundas protectoras", "Fundas y protectores para cartas."},
+                {"Caja para mazo", "Cajas y accesorios para guardar mazos."},
+                {"Lata", "Latas y productos coleccionables en lata."}
+        };
+        try (PreparedStatement check = targetConnection.prepareStatement(
+                "SELECT id_categoria FROM categoria_producto WHERE nombre = ?");
+             PreparedStatement insert = targetConnection.prepareStatement(
+                     "INSERT INTO categoria_producto (nombre, descripcion, activo) VALUES (?, ?, 1)");
+             PreparedStatement rename = targetConnection.prepareStatement(
+                     "UPDATE producto SET categoria = ? WHERE categoria = ?")) {
+            for (String[] category : defaults) {
+                check.setString(1, category[0]);
+                try (ResultSet rs = check.executeQuery()) {
+                    if (!rs.next()) {
+                        insert.setString(1, category[0]);
+                        insert.setString(2, category[1]);
+                        insert.executeUpdate();
+                    }
+                }
+            }
+            String[][] legacyNames = {
+                    {"Single Card", "Carta individual"},
+                    {"Booster Box", "Caja de sobres"},
+                    {"Elite Trainer Box", "Caja de entrenador elite"},
+                    {"Sleeves", "Fundas protectoras"},
+                    {"Deck", "Caja para mazo"},
+                    {"Tin", "Lata"}
+            };
+            for (String[] legacy : legacyNames) {
+                rename.setString(1, legacy[1]);
+                rename.setString(2, legacy[0]);
+                rename.executeUpdate();
             }
         }
     }
@@ -650,22 +720,24 @@ public class DatabaseService {
 
             // 3. Productos TCG
             addProducto(new Producto(0, "7501001", "Charizard ex #199/165 Special Art",
-                    "Carta individual ultra rara de Scarlet & Violet 151", "Single Card", "Pokémon", new BigDecimal("145.00"), 4));
+                    "Carta individual ultra rara de Scarlet & Violet 151", "Carta individual", "Pokémon", new BigDecimal("145.00"), 4));
             addProducto(new Producto(0, "7501002", "Scarlet & Violet: 151 Booster Bundle",
-                    "Caja sellada con 6 paquetes de mejora de 151", "Booster Box", "Pokémon", new BigDecimal("38.50"), 18));
+                    "Caja sellada con 6 paquetes de mejora de 151", "Caja de sobres", "Pokémon", new BigDecimal("38.50"), 18));
                 Producto prismaticEtb = new Producto(0, "7501003", "Prismatic Evolutions Elite Trainer Box",
-                    "ETB especial con micas de Eevee, dados y 9 sobres", "Elite Trainer Box", "Pokémon", new BigDecimal("59.99"), 0);
+                    "ETB especial con micas de Eevee, dados y 9 sobres", "Caja de entrenador elite", "Pokémon", new BigDecimal("59.99"), 0);
                 prismaticEtb.setTipoVenta(Producto.TIPO_PREVENTA);
+                prismaticEtb.setFechaSalida(LocalDate.now().plusDays(5));
                 addProducto(prismaticEtb);
             addProducto(new Producto(0, "7501004", "Dragon Shield Sleeves Matte (Emerald)",
-                    "Paquete de 100 micas tamaño estándar textura mate", "Sleeves", "Pokémon", new BigDecimal("12.50"), 35));
+                    "Paquete de 100 micas tamaño estándar textura mate", "Fundas protectoras", "Pokémon", new BigDecimal("12.50"), 35));
             addProducto(new Producto(0, "7501005", "Pikachu Ultra Pro Deck Box Alcove",
-                    "Caja porta baraja de cuero sintético con cierre magnético", "Deck", "Pokémon", new BigDecimal("24.00"), 15));
+                    "Caja porta baraja de cuero sintético con cierre magnético", "Caja para mazo", "Pokémon", new BigDecimal("24.00"), 15));
             addProducto(new Producto(0, "7501006", "Mewtwo VSTAR Universe Secret Rare",
-                    "Carta japonesa en condición Mint graduable", "Single Card", "Pokémon", new BigDecimal("85.00"), 3));
+                    "Carta japonesa en condición Mint graduable", "Carta individual", "Pokémon", new BigDecimal("85.00"), 3));
                 Producto surgingSparksBox = new Producto(0, "7501007", "Surging Sparks Booster Box (36 Sobres)",
-                    "Caja completa de sobres sellada de fábrica con Pikachu ex tera", "Booster Box", "Pokémon", new BigDecimal("149.99"), 0);
+                    "Caja completa de sobres sellada de fábrica con Pikachu ex tera", "Caja de sobres", "Pokémon", new BigDecimal("149.99"), 0);
                 surgingSparksBox.setTipoVenta(Producto.TIPO_PREVENTA);
+                surgingSparksBox.setFechaSalida(LocalDate.now().plusWeeks(2));
                 addProducto(surgingSparksBox);
 
             // 4. Preventas
@@ -945,7 +1017,7 @@ public class DatabaseService {
 
     public synchronized List<Producto> getProductos() {
         List<Producto> list = new ArrayList<>();
-        String sql = "SELECT id_producto, codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, stock, tipo_venta FROM producto ORDER BY id_producto ASC";
+        String sql = "SELECT id_producto, codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, stock, tipo_venta, fecha_salida FROM producto ORDER BY id_producto ASC";
         try (Statement st = getConnection().createStatement();
              ResultSet rs = st.executeQuery(sql)) {
             while (rs.next()) {
@@ -959,6 +1031,8 @@ public class DatabaseService {
                 p.setPrecioUnitario(rs.getBigDecimal("precio_unitario"));
                 p.setStock(rs.getInt("stock"));
                 p.setTipoVenta(rs.getString("tipo_venta"));
+                String fechaSalida = rs.getString("fecha_salida");
+                p.setFechaSalida(fechaSalida == null || fechaSalida.trim().isEmpty() ? null : parseDate(fechaSalida));
                 list.add(p);
             }
         } catch (SQLException ex) {
@@ -967,10 +1041,130 @@ public class DatabaseService {
         return list;
     }
 
-    public synchronized void addProducto(Producto p) {
-        String sql = "INSERT INTO producto (codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, stock, tipo_venta) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+    public synchronized List<Categoria> getCategorias() {
+        List<Categoria> list = new ArrayList<>();
+        String sql = "SELECT id_categoria, nombre, descripcion, activo, fecha_registro FROM categoria_producto ORDER BY nombre ASC";
+        try (Statement st = getConnection().createStatement(); ResultSet rs = st.executeQuery(sql)) {
+            while (rs.next()) {
+                Categoria categoria = new Categoria();
+                categoria.setIdCategoria(rs.getInt("id_categoria"));
+                categoria.setNombre(rs.getString("nombre"));
+                categoria.setDescripcion(rs.getString("descripcion"));
+                categoria.setActivo(rs.getInt("activo") != 0);
+                categoria.setFechaRegistro(parseDateTime(rs.getString("fecha_registro")));
+                list.add(categoria);
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+        return list;
+    }
+
+    public synchronized List<String> getNombresCategoriasActivas() {
+        List<String> list = new ArrayList<>();
+        String sql = "SELECT nombre FROM categoria_producto WHERE activo = 1 ORDER BY nombre ASC";
+        try (Statement st = getConnection().createStatement(); ResultSet rs = st.executeQuery(sql)) {
+            while (rs.next()) list.add(rs.getString("nombre"));
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+        return list;
+    }
+
+    public synchronized void addCategoria(Categoria categoria) throws Exception {
+        String nombre = categoria.getNombre() != null ? categoria.getNombre().trim() : "";
+        if (nombre.isEmpty()) throw new Exception("El nombre de la categoría es obligatorio.");
+        String sql = "INSERT INTO categoria_producto (nombre, descripcion, activo, fecha_registro) VALUES (?, ?, ?, ?)";
         try (PreparedStatement ps = getConnection().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            ps.setString(1, p.getCodigoBarras());
+            ps.setString(1, nombre);
+            ps.setString(2, categoria.getDescripcion() != null ? categoria.getDescripcion().trim() : "");
+            ps.setInt(3, categoria.isActivo() ? 1 : 0);
+            LocalDateTime fecha = categoria.getFechaRegistro() != null ? categoria.getFechaRegistro() : LocalDateTime.now();
+            ps.setString(4, fecha.format(dtfDateTime));
+            ps.executeUpdate();
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                if (keys.next()) categoria.setIdCategoria(keys.getInt(1));
+            }
+            categoria.setNombre(nombre);
+            categoria.setFechaRegistro(fecha);
+        } catch (SQLException ex) {
+            if (ex.getMessage() != null && ex.getMessage().toLowerCase().contains("unique")) {
+                throw new Exception("Ya existe una categoría con el nombre '" + nombre + "'.");
+            }
+            throw new Exception("Error al registrar categoría: " + ex.getMessage(), ex);
+        }
+        syncSqliteBackup();
+    }
+
+    public synchronized void updateCategoria(Categoria categoria, String oldName) throws Exception {
+        String nombre = categoria.getNombre() != null ? categoria.getNombre().trim() : "";
+        if (nombre.isEmpty()) throw new Exception("El nombre de la categoría es obligatorio.");
+        Connection conn = getConnection();
+        boolean originalAutoCommit = conn.getAutoCommit();
+        try {
+            conn.setAutoCommit(false);
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE categoria_producto SET nombre = ?, descripcion = ?, activo = ? WHERE id_categoria = ?")) {
+                ps.setString(1, nombre);
+                ps.setString(2, categoria.getDescripcion() != null ? categoria.getDescripcion().trim() : "");
+                ps.setInt(3, categoria.isActivo() ? 1 : 0);
+                ps.setInt(4, categoria.getIdCategoria());
+                ps.executeUpdate();
+            }
+            if (oldName != null && !oldName.equals(nombre)) {
+                try (PreparedStatement ps = conn.prepareStatement("UPDATE producto SET categoria = ? WHERE categoria = ?")) {
+                    ps.setString(1, nombre);
+                    ps.setString(2, oldName);
+                    ps.executeUpdate();
+                }
+            }
+            conn.commit();
+            categoria.setNombre(nombre);
+        } catch (SQLException ex) {
+            conn.rollback();
+            if (ex.getMessage() != null && ex.getMessage().toLowerCase().contains("unique")) {
+                throw new Exception("Ya existe otra categoría con el nombre '" + nombre + "'.");
+            }
+            throw new Exception("Error al actualizar categoría: " + ex.getMessage(), ex);
+        } finally {
+            conn.setAutoCommit(originalAutoCommit);
+        }
+        syncSqliteBackup();
+    }
+
+    public synchronized int countProductosByCategoria(String nombreCategoria) {
+        String sql = "SELECT COUNT(*) FROM producto WHERE categoria = ?";
+        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            ps.setString(1, nombreCategoria);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    public synchronized void deleteCategoria(int idCategoria, String nombreCategoria) throws Exception {
+        int productos = countProductosByCategoria(nombreCategoria);
+        if (productos > 0) {
+            throw new Exception("No se puede eliminar la categoría porque está asociada a " + productos + " producto(s). Desactívala para ocultarla en nuevos registros.");
+        }
+        try (PreparedStatement ps = getConnection().prepareStatement("DELETE FROM categoria_producto WHERE id_categoria = ?")) {
+            ps.setInt(1, idCategoria);
+            ps.executeUpdate();
+        } catch (SQLException ex) {
+            throw new Exception("Error al eliminar categoría: " + ex.getMessage(), ex);
+        }
+        syncSqliteBackup();
+    }
+
+    public synchronized void addProducto(Producto p) {
+        String sql = "INSERT INTO producto (codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, stock, tipo_venta, fecha_salida) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        try {
+            validarCodigoBarrasDisponible(p.getCodigoBarras(), 0);
+            try (PreparedStatement ps = getConnection().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            setCodigoBarras(ps, 1, p.getCodigoBarras());
             ps.setString(2, p.getNombre());
             ps.setString(3, p.getDescripcion());
             ps.setString(4, p.getCategoria());
@@ -978,12 +1172,17 @@ public class DatabaseService {
             ps.setBigDecimal(6, p.getPrecioUnitario());
             ps.setInt(7, p.getStock());
             ps.setString(8, p.getTipoVenta());
+            if (p.getFechaSalida() != null) ps.setString(9, p.getFechaSalida().toString());
+            else ps.setNull(9, Types.DATE);
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (keys.next()) {
                     p.setIdProducto(keys.getInt(1));
                 }
             }
+            }
+        } catch (IllegalArgumentException ex) {
+            throw ex;
         } catch (SQLException ex) {
             throw new RuntimeException("Error al agregar producto: " + ex.getMessage(), ex);
         }
@@ -991,9 +1190,11 @@ public class DatabaseService {
     }
 
     public synchronized void updateProducto(Producto p) {
-        String sql = "UPDATE producto SET codigo_barras = ?, nombre = ?, descripcion = ?, categoria = ?, juego_tcg = ?, precio_unitario = ?, stock = ?, tipo_venta = ? WHERE id_producto = ?";
-        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
-            ps.setString(1, p.getCodigoBarras());
+        String sql = "UPDATE producto SET codigo_barras = ?, nombre = ?, descripcion = ?, categoria = ?, juego_tcg = ?, precio_unitario = ?, stock = ?, tipo_venta = ?, fecha_salida = ? WHERE id_producto = ?";
+        try {
+            validarCodigoBarrasDisponible(p.getCodigoBarras(), p.getIdProducto());
+            try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            setCodigoBarras(ps, 1, p.getCodigoBarras());
             ps.setString(2, p.getNombre());
             ps.setString(3, p.getDescripcion());
             ps.setString(4, p.getCategoria());
@@ -1001,12 +1202,37 @@ public class DatabaseService {
             ps.setBigDecimal(6, p.getPrecioUnitario());
             ps.setInt(7, p.getStock());
             ps.setString(8, p.getTipoVenta());
-            ps.setInt(9, p.getIdProducto());
+            if (p.getFechaSalida() != null) ps.setString(9, p.getFechaSalida().toString());
+            else ps.setNull(9, Types.DATE);
+            ps.setInt(10, p.getIdProducto());
             ps.executeUpdate();
+            }
+        } catch (IllegalArgumentException ex) {
+            throw ex;
         } catch (SQLException ex) {
             throw new RuntimeException("Error al actualizar producto: " + ex.getMessage(), ex);
         }
         syncSqliteBackup();
+    }
+
+    private void validarCodigoBarrasDisponible(String codigoBarras, int idProductoExcluir) throws SQLException {
+        if (codigoBarras == null || codigoBarras.trim().isEmpty()) return;
+        String sql = "SELECT nombre FROM producto WHERE codigo_barras = ? AND id_producto <> ?";
+        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            ps.setString(1, codigoBarras.trim());
+            ps.setInt(2, idProductoExcluir);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    throw new IllegalArgumentException("El código de barras ya está registrado para el producto '" + rs.getString("nombre") + "'.");
+                }
+            }
+        }
+    }
+
+    private void setCodigoBarras(PreparedStatement ps, int index, String codigoBarras) throws SQLException {
+        String codigoNormalizado = codigoBarras != null ? codigoBarras.trim() : "";
+        if (codigoNormalizado.isEmpty()) ps.setNull(index, Types.VARCHAR);
+        else ps.setString(index, codigoNormalizado);
     }
 
     public synchronized void deleteProducto(int idProducto) {
@@ -1021,7 +1247,7 @@ public class DatabaseService {
     }
 
     public synchronized Producto findProductoById(int idProducto) {
-        String sql = "SELECT id_producto, codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, stock, tipo_venta FROM producto WHERE id_producto = ?";
+        String sql = "SELECT id_producto, codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, stock, tipo_venta, fecha_salida FROM producto WHERE id_producto = ?";
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
             ps.setInt(1, idProducto);
             try (ResultSet rs = ps.executeQuery()) {
@@ -1036,6 +1262,8 @@ public class DatabaseService {
                     p.setPrecioUnitario(rs.getBigDecimal("precio_unitario"));
                     p.setStock(rs.getInt("stock"));
                     p.setTipoVenta(rs.getString("tipo_venta"));
+                    String fechaSalida = rs.getString("fecha_salida");
+                    p.setFechaSalida(fechaSalida == null || fechaSalida.trim().isEmpty() ? null : parseDate(fechaSalida));
                     return p;
                 }
             }
@@ -1535,6 +1763,72 @@ public class DatabaseService {
         syncSqliteBackup();
     }
 
+    public synchronized void liquidarPreventa(int idPreventa, String metodoPago) throws Exception {
+        Connection conn = getConnection();
+        boolean originalAutoCommit = conn.getAutoCommit();
+        try {
+            conn.setAutoCommit(false);
+
+            int idCliente;
+            int idUsuario;
+            int idProducto;
+            BigDecimal montoTotal;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT id_cliente, id_usuario, id_producto, monto_total, estado FROM preventa WHERE id_preventa = ?")) {
+                ps.setInt(1, idPreventa);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) throw new Exception("No se encontró la preventa seleccionada.");
+                    if (!"Pendiente".equalsIgnoreCase(rs.getString("estado"))) {
+                        throw new Exception("La preventa ya no está pendiente y no puede liquidarse.");
+                    }
+                    idCliente = rs.getInt("id_cliente");
+                    idUsuario = rs.getInt("id_usuario");
+                    idProducto = rs.getInt("id_producto");
+                    montoTotal = rs.getBigDecimal("monto_total");
+                }
+            }
+
+            String sqlVenta = "INSERT INTO venta (id_cliente, id_usuario, fecha_venta, monto_total, metodo_pago) VALUES (?, ?, ?, ?, ?)";
+            int idVenta;
+            try (PreparedStatement ps = conn.prepareStatement(sqlVenta, Statement.RETURN_GENERATED_KEYS)) {
+                ps.setInt(1, idCliente);
+                ps.setInt(2, idUsuario);
+                ps.setString(3, LocalDateTime.now().format(dtfDateTime));
+                ps.setBigDecimal(4, montoTotal);
+                ps.setString(5, metodoPago);
+                ps.executeUpdate();
+                try (ResultSet keys = ps.getGeneratedKeys()) {
+                    if (!keys.next()) throw new SQLException("No se obtuvo el ID generado para la venta.");
+                    idVenta = keys.getInt(1);
+                }
+            }
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO detalle_venta (id_venta, id_producto, cantidad, precio_historico) VALUES (?, ?, 1, ?)")) {
+                ps.setInt(1, idVenta);
+                ps.setInt(2, idProducto);
+                ps.setBigDecimal(3, montoTotal);
+                ps.executeUpdate();
+            }
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE preventa SET estado = 'Entregado' WHERE id_preventa = ? AND estado = 'Pendiente'")) {
+                ps.setInt(1, idPreventa);
+                if (ps.executeUpdate() != 1) {
+                    throw new Exception("La preventa ya no está pendiente y no pudo marcarse como entregada.");
+                }
+            }
+
+            conn.commit();
+        } catch (Exception ex) {
+            conn.rollback();
+            throw ex;
+        } finally {
+            conn.setAutoCommit(originalAutoCommit);
+        }
+        syncSqliteBackup();
+    }
+
     // =========================================================================
     // CRUD: TORNEO & PARTICIPANTE_TORNEO
     // =========================================================================
@@ -1725,7 +2019,7 @@ public class DatabaseService {
 
     public Map<String, Integer> getTableCounts() {
         Map<String, Integer> counts = new LinkedHashMap<>();
-        String[] tables = {"cliente", "usuario", "producto", "franquicia", "venta", "detalle_venta", "preventa", "torneo", "participante_torneo"};
+        String[] tables = {"cliente", "usuario", "producto", "categoria_producto", "franquicia", "venta", "detalle_venta", "preventa", "torneo", "participante_torneo"};
         for (String t : tables) {
             try (Statement st = getConnection().createStatement();
                  ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM " + t)) {
@@ -1750,6 +2044,7 @@ public class DatabaseService {
                     st.execute("DROP TABLE IF EXISTS detalle_venta;");
                     st.execute("DROP TABLE IF EXISTS venta;");
                     st.execute("DROP TABLE IF EXISTS producto;");
+                    st.execute("DROP TABLE IF EXISTS categoria_producto;");
                     st.execute("DROP TABLE IF EXISTS franquicia;");
                     st.execute("DROP TABLE IF EXISTS usuario;");
                     st.execute("DROP TABLE IF EXISTS cliente;");
@@ -1762,6 +2057,7 @@ public class DatabaseService {
                     st.execute("DROP TABLE IF EXISTS detalle_venta;");
                     st.execute("DROP TABLE IF EXISTS venta;");
                     st.execute("DROP TABLE IF EXISTS producto;");
+                    st.execute("DROP TABLE IF EXISTS categoria_producto;");
                     st.execute("DROP TABLE IF EXISTS franquicia;");
                     st.execute("DROP TABLE IF EXISTS usuario;");
                     st.execute("DROP TABLE IF EXISTS cliente;");

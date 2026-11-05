@@ -40,8 +40,8 @@ public class SessionManager {
             // Vendedor tiene acceso a POS, Inventario, Clientes, Preventas y Dashboard
             return !"USUARIOS".equals(cardName) && !"DATABASE".equals(cardName);
         } else if ("Organizador_Torneos".equalsIgnoreCase(rol)) {
-            // Organizador tiene acceso a Torneos, Franquicias, Clientes y Dashboard
-            return "TORNEOS".equals(cardName) || "FRANQUICIAS".equals(cardName) || "CLIENTES".equals(cardName) || "DASHBOARD".equals(cardName);
+            // Organizador tiene acceso a Torneos, Franquicias, Categorías, Clientes y Dashboard
+            return "TORNEOS".equals(cardName) || "FRANQUICIAS".equals(cardName) || "CATEGORIAS".equals(cardName) || "CLIENTES".equals(cardName) || "DASHBOARD".equals(cardName);
         }
         return true;
     }

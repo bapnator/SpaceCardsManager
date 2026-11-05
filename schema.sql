@@ -53,7 +53,16 @@ CREATE TABLE IF NOT EXISTS producto (
     juego_tcg VARCHAR(50) DEFAULT 'Pokémon', -- Ej: 'Magic', 'Yu-Gi-Oh!', 'Pokémon', 'Lorcana'
     precio_unitario DECIMAL(10,2) NOT NULL CHECK (precio_unitario >= 0),
     stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0),
-    tipo_venta VARCHAR(20) NOT NULL DEFAULT 'VENTA_NORMAL'
+    tipo_venta VARCHAR(20) NOT NULL DEFAULT 'VENTA_NORMAL',
+    fecha_salida DATE NULL
+);
+
+CREATE TABLE IF NOT EXISTS categoria_producto (
+    id_categoria INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre VARCHAR(80) NOT NULL UNIQUE,
+    descripcion TEXT,
+    activo BOOLEAN NOT NULL DEFAULT 1,
+    fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ========================================================

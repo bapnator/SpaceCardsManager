@@ -16,6 +16,7 @@ public class MainWindow extends JFrame {
     private VentasPanel ventasPanel;
     private InventarioPanel inventarioPanel;
     private FranquiciasPanel franquiciasPanel;
+    private CategoriasPanel categoriasPanel;
     private ClientesPanel clientesPanel;
     private PreventasPanel preventasPanel;
     private TorneosPanel torneosPanel;
@@ -40,6 +41,7 @@ public class MainWindow extends JFrame {
         ventasPanel = new VentasPanel(notifyDataChanged);
         inventarioPanel = new InventarioPanel(notifyDataChanged);
         franquiciasPanel = new FranquiciasPanel(notifyDataChanged);
+        categoriasPanel = new CategoriasPanel(notifyDataChanged);
         clientesPanel = new ClientesPanel(notifyDataChanged);
         preventasPanel = new PreventasPanel(notifyDataChanged);
         torneosPanel = new TorneosPanel(notifyDataChanged);
@@ -54,6 +56,7 @@ public class MainWindow extends JFrame {
         cardsContainer.add(ventasPanel, "POS");
         cardsContainer.add(inventarioPanel, "INVENTARIO");
         cardsContainer.add(franquiciasPanel, "FRANQUICIAS");
+        cardsContainer.add(categoriasPanel, "CATEGORIAS");
         cardsContainer.add(clientesPanel, "CLIENTES");
         cardsContainer.add(preventasPanel, "PREVENTAS");
         cardsContainer.add(torneosPanel, "TORNEOS");
@@ -119,6 +122,7 @@ public class MainWindow extends JFrame {
         if (ventasPanel != null) ventasPanel.refreshAll();
         if (inventarioPanel != null) inventarioPanel.refreshTable();
         if (franquiciasPanel != null) franquiciasPanel.refreshTable();
+        if (categoriasPanel != null) categoriasPanel.refreshTable();
         if (clientesPanel != null) clientesPanel.refreshTable();
         if (preventasPanel != null) preventasPanel.refreshTable();
         if (torneosPanel != null) torneosPanel.refreshTorneos();

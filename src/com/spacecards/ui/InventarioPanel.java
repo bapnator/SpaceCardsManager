@@ -14,14 +14,13 @@ import java.util.List;
 public class InventarioPanel extends JPanel {
     private final DatabaseService db = DatabaseService.getInstance();
     private final JTextField txtBuscar = new JTextField();
-    private final JComboBox<String> cmbCategoria = new JComboBox<>(new String[]{
-            "Todas las categorías", "Single Card", "Booster Box", "Elite Trainer Box", "Sleeves", "Deck"
-    });
+        private final JComboBox<String> cmbCategoria = new JComboBox<>();
     private final JComboBox<String> cmbJuego = new JComboBox<>();
     private final JComboBox<String> cmbStock = new JComboBox<>(new String[]{
             "Todos", "Con stock (> 0)", "Stock crítico (<= 5)", "Agotado (0)"
     });
     private boolean updatingJuegosFilter = false;
+    private boolean updatingCategoriasFilter = false;
 
     private final DefaultTableModel tableModel;
     private final JTable table;
@@ -89,7 +88,9 @@ public class InventarioPanel extends JPanel {
         filterBar.add(txtBuscar, gbc);
 
         gbc.gridx = 1; gbc.gridy = 0; gbc.weightx = 0.2;
-        cmbCategoria.addActionListener(e -> refreshTable());
+        cmbCategoria.addActionListener(e -> {
+            if (!updatingCategoriasFilter) refreshTable();
+        });
         filterBar.add(cmbCategoria, gbc);
 
         gbc.gridx = 2; gbc.gridy = 0; gbc.weightx = 0.2;
@@ -106,7 +107,7 @@ public class InventarioPanel extends JPanel {
 
         // Tabla
         tableModel = new DefaultTableModel(new String[]{
-            "ID", "Código Barras", "Nombre del Producto", "Categoría", "Juego TCG", "Precio Unit.", "Stock", "Modalidad", "Estado"
+            "ID", "Código Barras", "Nombre del Producto", "Categoría", "Juego TCG", "Precio Unit.", "Stock", "Modalidad", "Fecha de salida", "Estado"
         }, 0) {
             @Override
             public boolean isCellEditable(int row, int col) { return false; }
@@ -118,7 +119,23 @@ public class InventarioPanel extends JPanel {
         this.add(cardPanel, BorderLayout.CENTER);
 
         updateJuegosFilter();
+        updateCategoriasFilter();
         refreshTable();
+    }
+
+    private void updateCategoriasFilter() {
+        updatingCategoriasFilter = true;
+        try {
+            String current = (String) cmbCategoria.getSelectedItem();
+            List<String> categories = db.getNombresCategoriasActivas();
+            cmbCategoria.removeAllItems();
+            cmbCategoria.addItem("Todas las categorías");
+            for (String category : categories) cmbCategoria.addItem(category);
+            if ("Todas las categorías".equals(current) || categories.contains(current)) cmbCategoria.setSelectedItem(current);
+            else cmbCategoria.setSelectedIndex(0);
+        } finally {
+            updatingCategoriasFilter = false;
+        }
     }
 
     public void updateJuegosFilter() {
@@ -154,6 +171,7 @@ public class InventarioPanel extends JPanel {
 
     public void refreshTable() {
         updateJuegosFilter();
+        updateCategoriasFilter();
         String query = txtBuscar.getText().trim().toLowerCase();
         String cat = (String) cmbCategoria.getSelectedItem();
         String juego = (String) cmbJuego.getSelectedItem();
@@ -184,11 +202,12 @@ public class InventarioPanel extends JPanel {
                         p.getIdProducto(),
                         p.getCodigoBarras() != null ? p.getCodigoBarras() : "-",
                         p.getNombre(),
-                        p.getCategoria(),
+                        Producto.getCategoriaVisible(p.getCategoria()),
                         p.getJuegoTcg(),
                         "$" + p.getPrecioUnitario(),
                         p.isPreventa() ? "-" : p.getStock(),
                         p.isPreventa() ? "Preventa" : "Venta normal",
+                        p.getFechaSalida() != null ? p.getFechaSalida().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) : "-",
                         estadoStock
                 });
             }
@@ -196,10 +215,15 @@ public class InventarioPanel extends JPanel {
     }
 
     private void showProductoDialog(Producto p) {
+        List<String> categories = db.getNombresCategoriasActivas();
+        if (p == null && categories.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Primero registra o activa una categoría de producto.", "Sin categorías disponibles", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
         boolean isEdit = (p != null);
         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this),
                 isEdit ? "Editar Producto" : "PantallaCrearRegistroProducto", true);
-        dialog.setSize(500, 550);
+        dialog.setSize(520, 610);
         dialog.setLocationRelativeTo(this);
         dialog.setLayout(new BorderLayout(12, 12));
 
@@ -211,8 +235,14 @@ public class InventarioPanel extends JPanel {
 
         JTextField txtCode = new JTextField(isEdit ? p.getCodigoBarras() : "");
         JTextField txtNombre = new JTextField(isEdit ? p.getNombre() : "");
-        JComboBox<String> cmbCat = new JComboBox<>(new String[]{"Single Card", "Booster Box", "Elite Trainer Box", "Sleeves", "Deck"});
-        if (isEdit) cmbCat.setSelectedItem(p.getCategoria());
+        JComboBox<String> cmbCat = new JComboBox<>(categories.toArray(new String[0]));
+        if (isEdit) {
+            String currentCategory = Producto.getCategoriaVisible(p.getCategoria());
+            if (!categories.contains(currentCategory)) {
+                cmbCat.addItem(currentCategory);
+            }
+            cmbCat.setSelectedItem(currentCategory);
+        }
 
         List<String> listaJuegos = new ArrayList<>(db.getNombresFranquiciasActivas());
         if (listaJuegos.isEmpty()) {
@@ -225,11 +255,16 @@ public class InventarioPanel extends JPanel {
         if (isEdit && p.getJuegoTcg() != null) cmbGame.setSelectedItem(p.getJuegoTcg());
 
         JTextField txtPrecio = new JTextField(isEdit ? p.getPrecioUnitario().toString() : "0.00");
+        JTextField txtFechaSalida = new JTextField(isEdit && p.getFechaSalida() != null
+            ? p.getFechaSalida().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) : "");
+        txtFechaSalida.putClientProperty("JTextField.placeholderText", "dd/MM/aaaa");
         JSpinner spinStock = new JSpinner(new SpinnerNumberModel(isEdit ? p.getStock() : 1, 0, 9999, 1));
         JComboBox<String> cmbTipoVenta = new JComboBox<>(new String[]{"Venta normal", "Preventa"});
         if (isEdit) cmbTipoVenta.setSelectedItem(p.isPreventa() ? "Preventa" : "Venta normal");
         JLabel lblStock = new JLabel("Stock real:");
+        JLabel lblFechaSalida = new JLabel("Fecha de salida:");
         spinStock.setEnabled(!"Preventa".equals(cmbTipoVenta.getSelectedItem()));
+        txtFechaSalida.setEnabled("Preventa".equals(cmbTipoVenta.getSelectedItem()));
         if (!spinStock.isEnabled()) lblStock.setText("Stock real (no aplica):");
         cmbTipoVenta.addActionListener(e -> {
             boolean isPreventa = "Preventa".equals(cmbTipoVenta.getSelectedItem());
@@ -244,6 +279,7 @@ public class InventarioPanel extends JPanel {
                 spinStock.setValue(0);
             }
             spinStock.setEnabled(!isPreventa);
+            txtFechaSalida.setEnabled(isPreventa);
             lblStock.setText(isPreventa ? "Stock real (no aplica):" : "Stock real:");
         });
         JTextArea txtDesc = new JTextArea(isEdit ? p.getDescripcion() : "", 3, 20);
@@ -285,6 +321,11 @@ public class InventarioPanel extends JPanel {
         form.add(spinStock, gbc);
 
         gbc.gridx = 0; gbc.gridy = 7;
+        form.add(lblFechaSalida, gbc);
+        gbc.gridx = 1;
+        form.add(txtFechaSalida, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 8;
         form.add(new JLabel("Descripción:"), gbc);
         gbc.gridx = 1;
         form.add(new JScrollPane(txtDesc), gbc);
@@ -312,22 +353,39 @@ public class InventarioPanel extends JPanel {
             boolean isPreventa = "Preventa".equals(cmbTipoVenta.getSelectedItem());
             int stockVal = isPreventa ? 0 : (int) spinStock.getValue();
             String tipoVenta = isPreventa ? Producto.TIPO_PREVENTA : Producto.TIPO_VENTA_NORMAL;
+            java.time.LocalDate fechaSalida = null;
+            if (isPreventa) {
+                try {
+                    fechaSalida = java.time.LocalDate.parse(txtFechaSalida.getText().trim(),
+                            java.time.format.DateTimeFormatter.ofPattern("dd/MM/uuuu"));
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(dialog, "La fecha de salida es obligatoria y debe usar el formato dd/MM/aaaa.", "Validación", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+            }
 
-            if (isEdit) {
-                p.setCodigoBarras(txtCode.getText().trim());
-                p.setNombre(name);
-                p.setCategoria((String) cmbCat.getSelectedItem());
-                p.setJuegoTcg((String) cmbGame.getSelectedItem());
-                p.setPrecioUnitario(precio);
-                p.setStock(stockVal);
-                p.setTipoVenta(tipoVenta);
-                p.setDescripcion(txtDesc.getText().trim());
-                db.updateProducto(p);
-            } else {
-                Producto nuevo = new Producto(0, txtCode.getText().trim(), name, txtDesc.getText().trim(),
-                        (String) cmbCat.getSelectedItem(), (String) cmbGame.getSelectedItem(), precio, stockVal);
-                nuevo.setTipoVenta(tipoVenta);
-                db.addProducto(nuevo);
+            try {
+                if (isEdit) {
+                    p.setCodigoBarras(txtCode.getText().trim());
+                    p.setNombre(name);
+                    p.setCategoria((String) cmbCat.getSelectedItem());
+                    p.setJuegoTcg((String) cmbGame.getSelectedItem());
+                    p.setPrecioUnitario(precio);
+                    p.setStock(stockVal);
+                    p.setTipoVenta(tipoVenta);
+                    p.setFechaSalida(fechaSalida);
+                    p.setDescripcion(txtDesc.getText().trim());
+                    db.updateProducto(p);
+                } else {
+                    Producto nuevo = new Producto(0, txtCode.getText().trim(), name, txtDesc.getText().trim(),
+                            (String) cmbCat.getSelectedItem(), (String) cmbGame.getSelectedItem(), precio, stockVal);
+                    nuevo.setTipoVenta(tipoVenta);
+                    nuevo.setFechaSalida(fechaSalida);
+                    db.addProducto(nuevo);
+                }
+            } catch (RuntimeException ex) {
+                JOptionPane.showMessageDialog(dialog, ex.getMessage(), "No se pudo guardar el producto", JOptionPane.WARNING_MESSAGE);
+                return;
             }
 
             dialog.dispose();

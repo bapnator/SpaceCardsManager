@@ -1,6 +1,7 @@
 package com.spacecards.model;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 public class Producto {
     public static final String TIPO_PREVENTA = "PREVENTA";
@@ -15,6 +16,7 @@ public class Producto {
     private BigDecimal precioUnitario;
     private int stock;
     private String tipoVenta = TIPO_VENTA_NORMAL;
+    private LocalDate fechaSalida;
 
     public Producto() {
         this.juegoTcg = "Pokémon";
@@ -58,11 +60,40 @@ public class Producto {
     public int getStock() { return stock; }
     public void setStock(int stock) { this.stock = stock; }
 
+    public LocalDate getFechaSalida() { return fechaSalida; }
+    public void setFechaSalida(LocalDate fechaSalida) { this.fechaSalida = fechaSalida; }
+
     public String getTipoVenta() { return tipoVenta; }
     public void setTipoVenta(String tipoVenta) {
         this.tipoVenta = TIPO_PREVENTA.equalsIgnoreCase(tipoVenta) ? TIPO_PREVENTA : TIPO_VENTA_NORMAL;
     }
     public boolean isPreventa() { return TIPO_PREVENTA.equals(tipoVenta); }
+
+    public static String getCategoriaVisible(String categoria) {
+        if (categoria == null) return "";
+        switch (categoria) {
+            case "Single Card": return "Carta individual";
+            case "Booster Box": return "Caja de sobres";
+            case "Elite Trainer Box": return "Caja de entrenador elite";
+            case "Sleeves": return "Fundas protectoras";
+            case "Deck": return "Caja para mazo";
+            case "Tin": return "Lata";
+            default: return categoria;
+        }
+    }
+
+    public static String getCategoriaAlmacenada(String categoriaVisible) {
+        if (categoriaVisible == null) return null;
+        switch (categoriaVisible) {
+            case "Carta individual": return "Single Card";
+            case "Caja de sobres": return "Booster Box";
+            case "Caja de entrenador elite": return "Elite Trainer Box";
+            case "Fundas protectoras": return "Sleeves";
+            case "Caja para mazo": return "Deck";
+            case "Lata": return "Tin";
+            default: return categoriaVisible;
+        }
+    }
 
     @Override
     public String toString() {

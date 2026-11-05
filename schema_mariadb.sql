@@ -12,6 +12,7 @@ DROP TABLE IF EXISTS torneo;
 DROP TABLE IF EXISTS preventa;
 DROP TABLE IF EXISTS detalle_venta;
 DROP TABLE IF EXISTS venta;
+DROP TABLE IF EXISTS categoria_producto;
 DROP TABLE IF EXISTS producto;
 DROP TABLE IF EXISTS usuario;
 DROP TABLE IF EXISTS cliente;
@@ -65,7 +66,16 @@ CREATE TABLE IF NOT EXISTS producto (
     juego_tcg VARCHAR(50) DEFAULT 'Pokémon',
     precio_unitario DECIMAL(10,2) NOT NULL CHECK (precio_unitario >= 0),
     stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0),
-    tipo_venta VARCHAR(20) NOT NULL DEFAULT 'VENTA_NORMAL'
+    tipo_venta VARCHAR(20) NOT NULL DEFAULT 'VENTA_NORMAL',
+    fecha_salida DATE NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS categoria_producto (
+    id_categoria INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(80) NOT NULL UNIQUE,
+    descripcion TEXT,
+    activo BOOLEAN NOT NULL DEFAULT 1,
+    fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
 -- ========================================================

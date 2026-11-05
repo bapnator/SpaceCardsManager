@@ -17,8 +17,8 @@ public class VentasPanel extends JPanel {
     // Catálogo
     private final JTextField txtBuscar = new JTextField();
     private final JComboBox<String> cmbCategoria = new JComboBox<>(new String[]{
-            "Todas las categorías", "Single Card", "Booster Box", "Elite Trainer Box", "Sleeves", "Deck"
-    });
+        });
+        private boolean updatingCategorias;
     private final DefaultTableModel catalogModel;
     private final JTable tableCatalog;
     private final JSpinner spinCantidad = new JSpinner(new SpinnerNumberModel(1, 1, 999, 1));
@@ -92,7 +92,9 @@ public class VentasPanel extends JPanel {
         filterPanel.add(txtBuscar, gbc);
 
         gbc.gridx = 1; gbc.gridy = 0; gbc.weightx = 0.4;
-        cmbCategoria.addActionListener(e -> filterCatalog());
+        cmbCategoria.addActionListener(e -> {
+            if (!updatingCategorias) filterCatalog();
+        });
         filterPanel.add(cmbCategoria, gbc);
 
         panelCatalogo.add(filterPanel, BorderLayout.NORTH);
@@ -348,6 +350,7 @@ public class VentasPanel extends JPanel {
     }
 
     public void refreshAll() {
+        updateCategoryOptions();
         filterCatalog();
 
         // Recargar combos
@@ -373,6 +376,21 @@ public class VentasPanel extends JPanel {
                     break;
                 }
             }
+        }
+    }
+
+    private void updateCategoryOptions() {
+        updatingCategorias = true;
+        try {
+            String current = (String) cmbCategoria.getSelectedItem();
+            cmbCategoria.removeAllItems();
+            cmbCategoria.addItem("Todas las categorías");
+            List<String> categories = db.getNombresCategoriasActivas();
+            for (String category : categories) cmbCategoria.addItem(category);
+            if ("Todas las categorías".equals(current) || categories.contains(current)) cmbCategoria.setSelectedItem(current);
+            else cmbCategoria.setSelectedIndex(0);
+        } finally {
+            updatingCategorias = false;
         }
     }
 }

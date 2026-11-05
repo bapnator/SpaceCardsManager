@@ -272,10 +272,20 @@ public class PreventasPanel extends JPanel {
                 "Confirmar Entrega", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
 
         if (confirm == JOptionPane.YES_OPTION) {
-            db.updatePreventaEstado(p.getIdPreventa(), "Entregado");
-            refreshTable();
-            if (onDataChanged != null) onDataChanged.run();
-            JOptionPane.showMessageDialog(this, "Preventa #" + p.getIdPreventa() + " marcada como Entregada.", "Éxito", JOptionPane.INFORMATION_MESSAGE);
+            String[] metodosPago = {"Efectivo", "Tarjeta", "Transferencia"};
+            String metodoPago = (String) JOptionPane.showInputDialog(this,
+                    "Selecciona el método de pago del saldo pendiente:",
+                    "Liquidar Preventa", JOptionPane.QUESTION_MESSAGE, null, metodosPago, metodosPago[0]);
+            if (metodoPago == null) return;
+
+            try {
+                db.liquidarPreventa(p.getIdPreventa(), metodoPago);
+                refreshTable();
+                if (onDataChanged != null) onDataChanged.run();
+                JOptionPane.showMessageDialog(this, "Preventa #" + p.getIdPreventa() + " registrada como venta y marcada como Entregada.", "Éxito", JOptionPane.INFORMATION_MESSAGE);
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "No se pudo liquidar la preventa: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
         }
     }
 

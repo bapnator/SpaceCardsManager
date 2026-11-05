@@ -18,6 +18,7 @@ public class DashboardPanel extends JPanel {
     private final JLabel lblTotalVentas = new JLabel("$0.00");
     private final JLabel lblStockTotal = new JLabel("0 items");
     private final JLabel lblPreventasCount = new JLabel("0 activas");
+    private final JLabel lblAnticiposPreventas = new JLabel("$0.00");
     private final JLabel lblTorneosCount = new JLabel("0 eventos");
 
     private final DefaultTableModel ventasModel;
@@ -60,13 +61,14 @@ public class DashboardPanel extends JPanel {
         JPanel centerPanel = new JPanel(new BorderLayout(16, 16));
         centerPanel.setOpaque(false);
 
-        // 4 KPI Cards
-        JPanel statsGrid = new JPanel(new GridLayout(1, 4, 16, 0));
+        // 5 KPI Cards
+        JPanel statsGrid = new JPanel(new GridLayout(1, 5, 16, 0));
         statsGrid.setOpaque(false);
 
         statsGrid.add(createKpiCard("Ingresos por Ventas", lblTotalVentas, UITheme.COLOR_SUCCESS));
         statsGrid.add(createKpiCard("Inventario Disponible", lblStockTotal, UITheme.COLOR_PRIMARY));
         statsGrid.add(createKpiCard("Preventas Activas", lblPreventasCount, UITheme.COLOR_ACCENT));
+        statsGrid.add(createKpiCard("Anticipos Recaudados", lblAnticiposPreventas, UITheme.COLOR_SUCCESS));
         statsGrid.add(createKpiCard("Torneos Programados", lblTorneosCount, new Color(168, 85, 247)));
 
         centerPanel.add(statsGrid, BorderLayout.NORTH);
@@ -162,10 +164,17 @@ public class DashboardPanel extends JPanel {
         lblStockTotal.setText(listaProds.size() + " ítems (" + totalUnits + " u.)");
 
         // Preventas
-        long preventasPendientes = db.getPreventas().stream()
-                .filter(p -> "Pendiente".equalsIgnoreCase(p.getEstado()))
-                .count();
+        List<com.spacecards.model.Preventa> preventas = db.getPreventas();
+        long preventasPendientes = 0;
+        BigDecimal anticiposPendientes = BigDecimal.ZERO;
+        for (com.spacecards.model.Preventa preventa : preventas) {
+            if ("Pendiente".equalsIgnoreCase(preventa.getEstado())) {
+                preventasPendientes++;
+                anticiposPendientes = anticiposPendientes.add(preventa.getMontoAnticipo());
+            }
+        }
         lblPreventasCount.setText(preventasPendientes + " pendientes");
+        lblAnticiposPreventas.setText("$" + anticiposPendientes);
 
         // Torneos
         long torneosActivos = db.getTorneos().stream()
