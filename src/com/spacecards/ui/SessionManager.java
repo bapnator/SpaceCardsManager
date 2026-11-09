@@ -37,11 +37,11 @@ public class SessionManager {
         if ("Administrador".equalsIgnoreCase(rol)) {
             return true; // Administrador tiene acceso total
         } else if ("Vendedor".equalsIgnoreCase(rol)) {
-            // Vendedor tiene acceso a POS, Inventario, Clientes, Preventas y Dashboard
+            // Vendedor tiene acceso a POS (ventas y preventas), Inventario, Clientes y Dashboard
             return !"USUARIOS".equals(cardName) && !"DATABASE".equals(cardName);
         } else if ("Organizador_Torneos".equalsIgnoreCase(rol)) {
-            // Organizador tiene acceso a Torneos, Franquicias, Categorías, Clientes y Dashboard
-            return "TORNEOS".equals(cardName) || "FRANQUICIAS".equals(cardName) || "CATEGORIAS".equals(cardName) || "CLIENTES".equals(cardName) || "DASHBOARD".equals(cardName);
+            // Organizador tiene acceso a Torneos, Configuración, Clientes y Dashboard
+            return "TORNEOS".equals(cardName) || "CONFIGURACION".equals(cardName) || "CLIENTES".equals(cardName) || "DASHBOARD".equals(cardName);
         }
         return true;
     }

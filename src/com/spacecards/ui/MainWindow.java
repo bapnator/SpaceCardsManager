@@ -13,12 +13,10 @@ public class MainWindow extends JFrame {
 
     private SidebarPanel sidebarPanel;
     private DashboardPanel dashboardPanel;
-    private VentasPanel ventasPanel;
+    private PuntoVentaPanel puntoVentaPanel;
     private InventarioPanel inventarioPanel;
-    private FranquiciasPanel franquiciasPanel;
-    private CategoriasPanel categoriasPanel;
+    private ConfiguracionPanel configuracionPanel;
     private ClientesPanel clientesPanel;
-    private PreventasPanel preventasPanel;
     private TorneosPanel torneosPanel;
     private UsuariosPanel usuariosPanel;
     private DatabasePanel databasePanel;
@@ -38,12 +36,10 @@ public class MainWindow extends JFrame {
         Runnable notifyDataChanged = this::refreshAllPanels;
 
         dashboardPanel = new DashboardPanel();
-        ventasPanel = new VentasPanel(notifyDataChanged);
+        puntoVentaPanel = new PuntoVentaPanel(notifyDataChanged);
         inventarioPanel = new InventarioPanel(notifyDataChanged);
-        franquiciasPanel = new FranquiciasPanel(notifyDataChanged);
-        categoriasPanel = new CategoriasPanel(notifyDataChanged);
+        configuracionPanel = new ConfiguracionPanel(notifyDataChanged);
         clientesPanel = new ClientesPanel(notifyDataChanged);
-        preventasPanel = new PreventasPanel(notifyDataChanged);
         torneosPanel = new TorneosPanel(notifyDataChanged);
         usuariosPanel = new UsuariosPanel(notifyDataChanged);
         databasePanel = new DatabasePanel(() -> {
@@ -53,12 +49,10 @@ public class MainWindow extends JFrame {
 
         // Registrar tarjetas
         cardsContainer.add(dashboardPanel, "DASHBOARD");
-        cardsContainer.add(ventasPanel, "POS");
+        cardsContainer.add(puntoVentaPanel, "POS");
         cardsContainer.add(inventarioPanel, "INVENTARIO");
-        cardsContainer.add(franquiciasPanel, "FRANQUICIAS");
-        cardsContainer.add(categoriasPanel, "CATEGORIAS");
+        cardsContainer.add(configuracionPanel, "CONFIGURACION");
         cardsContainer.add(clientesPanel, "CLIENTES");
-        cardsContainer.add(preventasPanel, "PREVENTAS");
         cardsContainer.add(torneosPanel, "TORNEOS");
         cardsContainer.add(usuariosPanel, "USUARIOS");
         cardsContainer.add(databasePanel, "DATABASE");
@@ -119,12 +113,10 @@ public class MainWindow extends JFrame {
 
     private void refreshAllPanels() {
         if (dashboardPanel != null) dashboardPanel.refreshData();
-        if (ventasPanel != null) ventasPanel.refreshAll();
+        if (puntoVentaPanel != null) puntoVentaPanel.refreshPanels();
         if (inventarioPanel != null) inventarioPanel.refreshTable();
-        if (franquiciasPanel != null) franquiciasPanel.refreshTable();
-        if (categoriasPanel != null) categoriasPanel.refreshTable();
+        if (configuracionPanel != null) configuracionPanel.refreshTables();
         if (clientesPanel != null) clientesPanel.refreshTable();
-        if (preventasPanel != null) preventasPanel.refreshTable();
         if (torneosPanel != null) torneosPanel.refreshTorneos();
         if (usuariosPanel != null) usuariosPanel.refreshTable();
     }
