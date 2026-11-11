@@ -8,6 +8,10 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -255,16 +259,31 @@ public class InventarioPanel extends JPanel {
         if (isEdit && p.getJuegoTcg() != null) cmbGame.setSelectedItem(p.getJuegoTcg());
 
         JTextField txtPrecio = new JTextField(isEdit ? p.getPrecioUnitario().toString() : "0.00");
+        JSpinner spinPorcentajeApartado = new JSpinner(new SpinnerNumberModel(
+                isEdit ? p.getPorcentajeApartado().doubleValue() : 30.0, 0.01, 100.0, 1.0));
+        spinPorcentajeApartado.setEditor(new JSpinner.NumberEditor(spinPorcentajeApartado, "#0.##"));
         JTextField txtFechaSalida = new JTextField(isEdit && p.getFechaSalida() != null
             ? p.getFechaSalida().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) : "");
-        txtFechaSalida.putClientProperty("JTextField.placeholderText", "dd/MM/aaaa");
+        txtFechaSalida.setEditable(false);
+        JButton btnElegirFechaSalida = UITheme.createSecondaryButton("Elegir fecha...");
+        JPanel fechaSalidaPanel = new JPanel(new BorderLayout(8, 0));
+        fechaSalidaPanel.setOpaque(false);
+        fechaSalidaPanel.add(txtFechaSalida, BorderLayout.CENTER);
+        fechaSalidaPanel.add(btnElegirFechaSalida, BorderLayout.EAST);
         JSpinner spinStock = new JSpinner(new SpinnerNumberModel(isEdit ? p.getStock() : 1, 0, 9999, 1));
         JComboBox<String> cmbTipoVenta = new JComboBox<>(new String[]{"Venta normal", "Preventa"});
         if (isEdit) cmbTipoVenta.setSelectedItem(p.isPreventa() ? "Preventa" : "Venta normal");
         JLabel lblStock = new JLabel("Stock real:");
-        JLabel lblFechaSalida = new JLabel("Fecha de salida:");
+        JLabel lblFechaSalida = new JLabel("Fecha estimada del proveedor:");
+        JLabel lblPorcentajeApartado = new JLabel("Porcentaje para apartado:");
+        boolean esPreventaInicial = "Preventa".equals(cmbTipoVenta.getSelectedItem());
         spinStock.setEnabled(!"Preventa".equals(cmbTipoVenta.getSelectedItem()));
-        txtFechaSalida.setEnabled("Preventa".equals(cmbTipoVenta.getSelectedItem()));
+        txtFechaSalida.setEnabled(esPreventaInicial);
+        btnElegirFechaSalida.setEnabled(esPreventaInicial);
+        lblFechaSalida.setVisible(esPreventaInicial);
+        fechaSalidaPanel.setVisible(esPreventaInicial);
+        spinPorcentajeApartado.setVisible(esPreventaInicial);
+        lblPorcentajeApartado.setVisible(esPreventaInicial);
         if (!spinStock.isEnabled()) lblStock.setText("Stock real (no aplica):");
         cmbTipoVenta.addActionListener(e -> {
             boolean isPreventa = "Preventa".equals(cmbTipoVenta.getSelectedItem());
@@ -280,7 +299,24 @@ public class InventarioPanel extends JPanel {
             }
             spinStock.setEnabled(!isPreventa);
             txtFechaSalida.setEnabled(isPreventa);
+            btnElegirFechaSalida.setEnabled(isPreventa);
+            lblFechaSalida.setVisible(isPreventa);
+            fechaSalidaPanel.setVisible(isPreventa);
+            spinPorcentajeApartado.setVisible(isPreventa);
+            lblPorcentajeApartado.setVisible(isPreventa);
             lblStock.setText(isPreventa ? "Stock real (no aplica):" : "Stock real:");
+            form.revalidate();
+            form.repaint();
+        });
+        btnElegirFechaSalida.addActionListener(e -> {
+            LocalDate fechaActual = txtFechaSalida.getText().trim().isEmpty()
+                    ? LocalDate.now() : LocalDate.parse(txtFechaSalida.getText().trim(),
+                    java.time.format.DateTimeFormatter.ofPattern("dd/MM/uuuu"));
+            LocalDate fechaSeleccionada = mostrarSelectorFecha(dialog, fechaActual);
+            if (fechaSeleccionada != null) {
+                txtFechaSalida.setText(fechaSeleccionada.format(
+                        java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+            }
         });
         JTextArea txtDesc = new JTextArea(isEdit ? p.getDescripcion() : "", 3, 20);
         txtDesc.setLineWrap(true);
@@ -323,9 +359,14 @@ public class InventarioPanel extends JPanel {
         gbc.gridx = 0; gbc.gridy = 7;
         form.add(lblFechaSalida, gbc);
         gbc.gridx = 1;
-        form.add(txtFechaSalida, gbc);
+        form.add(fechaSalidaPanel, gbc);
 
         gbc.gridx = 0; gbc.gridy = 8;
+        form.add(lblPorcentajeApartado, gbc);
+        gbc.gridx = 1;
+        form.add(spinPorcentajeApartado, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 9;
         form.add(new JLabel("Descripción:"), gbc);
         gbc.gridx = 1;
         form.add(new JScrollPane(txtDesc), gbc);
@@ -371,6 +412,7 @@ public class InventarioPanel extends JPanel {
                     p.setCategoria((String) cmbCat.getSelectedItem());
                     p.setJuegoTcg((String) cmbGame.getSelectedItem());
                     p.setPrecioUnitario(precio);
+                    p.setPorcentajeApartado(BigDecimal.valueOf(((Number) spinPorcentajeApartado.getValue()).doubleValue()));
                     p.setStock(stockVal);
                     p.setTipoVenta(tipoVenta);
                     p.setFechaSalida(fechaSalida);
@@ -380,6 +422,7 @@ public class InventarioPanel extends JPanel {
                     Producto nuevo = new Producto(0, txtCode.getText().trim(), name, txtDesc.getText().trim(),
                             (String) cmbCat.getSelectedItem(), (String) cmbGame.getSelectedItem(), precio, stockVal);
                     nuevo.setTipoVenta(tipoVenta);
+                    nuevo.setPorcentajeApartado(BigDecimal.valueOf(((Number) spinPorcentajeApartado.getValue()).doubleValue()));
                     nuevo.setFechaSalida(fechaSalida);
                     db.addProducto(nuevo);
                 }
@@ -410,6 +453,87 @@ public class InventarioPanel extends JPanel {
             return;
         }
         showProductoDialog(filteredList.get(row));
+    }
+
+    private LocalDate mostrarSelectorFecha(Window owner, LocalDate fechaInicial) {
+        JDialog calendario = new JDialog(owner, "Fecha estimada del proveedor", Dialog.ModalityType.APPLICATION_MODAL);
+        calendario.setLayout(new BorderLayout(8, 8));
+        calendario.setSize(360, 360);
+        calendario.setLocationRelativeTo(owner);
+
+        YearMonth[] mesMostrado = {YearMonth.from(fechaInicial)};
+        LocalDate[] fechaSeleccionada = {fechaInicial};
+        boolean[] confirmarSeleccion = {false};
+        JPanel diasPanel = new JPanel(new GridLayout(0, 7, 4, 4));
+        JLabel lblMes = new JLabel("", SwingConstants.CENTER);
+        lblMes.setFont(UITheme.FONT_SUBTITLE);
+
+        Runnable[] actualizarCalendario = new Runnable[1];
+        actualizarCalendario[0] = () -> {
+            lblMes.setText(mesMostrado[0].format(
+                    DateTimeFormatter.ofPattern("LLLL yyyy", new Locale("es", "MX"))));
+            diasPanel.removeAll();
+            for (String dia : new String[]{"L", "M", "X", "J", "V", "S", "D"}) {
+                JLabel encabezado = new JLabel(dia, SwingConstants.CENTER);
+                encabezado.setFont(UITheme.FONT_BOLD);
+                diasPanel.add(encabezado);
+            }
+
+            int desplazamiento = mesMostrado[0].atDay(1).getDayOfWeek().getValue() - 1;
+            for (int i = 0; i < desplazamiento; i++) diasPanel.add(new JLabel());
+            for (int dia = 1; dia <= mesMostrado[0].lengthOfMonth(); dia++) {
+                LocalDate fecha = mesMostrado[0].atDay(dia);
+                JButton btnDia = new JButton(String.valueOf(dia));
+                if (fecha.equals(fechaSeleccionada[0])) {
+                    btnDia.setBackground(UITheme.COLOR_PRIMARY);
+                    btnDia.setForeground(Color.WHITE);
+                }
+                btnDia.addActionListener(e -> {
+                    fechaSeleccionada[0] = fecha;
+                    actualizarCalendario[0].run();
+                });
+                diasPanel.add(btnDia);
+            }
+            diasPanel.revalidate();
+            diasPanel.repaint();
+        };
+
+        JButton btnMesAnterior = UITheme.createSecondaryButton("<");
+        btnMesAnterior.addActionListener(e -> {
+            mesMostrado[0] = mesMostrado[0].minusMonths(1);
+            actualizarCalendario[0].run();
+        });
+        JButton btnMesSiguiente = UITheme.createSecondaryButton(">");
+        btnMesSiguiente.addActionListener(e -> {
+            mesMostrado[0] = mesMostrado[0].plusMonths(1);
+            actualizarCalendario[0].run();
+        });
+
+        JPanel navegacion = new JPanel(new BorderLayout());
+        navegacion.add(btnMesAnterior, BorderLayout.WEST);
+        navegacion.add(lblMes, BorderLayout.CENTER);
+        navegacion.add(btnMesSiguiente, BorderLayout.EAST);
+        JPanel contenido = new JPanel(new BorderLayout(8, 8));
+        contenido.setBorder(new EmptyBorder(12, 12, 4, 12));
+        contenido.add(navegacion, BorderLayout.NORTH);
+        contenido.add(diasPanel, BorderLayout.CENTER);
+        calendario.add(contenido, BorderLayout.CENTER);
+
+        JPanel acciones = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton btnCancelar = UITheme.createSecondaryButton("Cancelar");
+        btnCancelar.addActionListener(e -> calendario.dispose());
+        JButton btnSeleccionar = UITheme.createPrimaryButton("Seleccionar");
+        btnSeleccionar.addActionListener(e -> {
+            confirmarSeleccion[0] = true;
+            calendario.dispose();
+        });
+        acciones.add(btnCancelar);
+        acciones.add(btnSeleccionar);
+        calendario.add(acciones, BorderLayout.SOUTH);
+
+        actualizarCalendario[0].run();
+        calendario.setVisible(true);
+        return confirmarSeleccion[0] ? fechaSeleccionada[0] : null;
     }
 
     private void deleteSelectedProducto() {

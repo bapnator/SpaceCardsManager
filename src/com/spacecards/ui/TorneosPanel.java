@@ -11,8 +11,11 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -107,14 +110,20 @@ public class TorneosPanel extends JPanel {
         partHeader.setOpaque(false);
         partHeader.add(lblSelectedTorneoTitle, BorderLayout.WEST);
 
+        JPanel participantActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        participantActions.setOpaque(false);
+        JButton btnPremio = UITheme.createSecondaryButton("Registrar ganador / premio");
+        btnPremio.addActionListener(e -> registrarResultadoParticipante());
+        participantActions.add(btnPremio);
         JButton btnEliminarPart = UITheme.createSecondaryButton("Cancelar Inscripción");
         btnEliminarPart.addActionListener(e -> cancelarInscripcionSeleccionada());
-        partHeader.add(btnEliminarPart, BorderLayout.EAST);
+        participantActions.add(btnEliminarPart);
+        partHeader.add(participantActions, BorderLayout.EAST);
 
         cardPart.add(partHeader, BorderLayout.NORTH);
 
         partModel = new DefaultTableModel(new String[]{
-                "ID Inscripción", "Jugador / Cliente", "Correo", "Teléfono", "POP ID / Player ID", "Pago Cuota", "Fecha Registro"
+                "ID Inscripción", "Jugador / Cliente", "Correo", "Teléfono", "POP ID / Player ID", "Pago Cuota", "Fecha Registro", "Lugar", "Premio"
         }, 0) {
             @Override
             public boolean isCellEditable(int row, int col) { return false; }
@@ -177,7 +186,9 @@ public class TorneosPanel extends JPanel {
                     c != null ? c.getTelefono() : "-",
                     pt.getIdJugadorTcg() != null ? pt.getIdJugadorTcg() : "Sin ID TCG",
                     pt.isPagoConfirmado() ? "Confirmado" : "Pendiente",
-                    pt.getFechaInscripcion().format(fmt)
+                    pt.getFechaInscripcion().format(fmt),
+                    pt.getPosicionFinal() == null ? "-" : pt.getPosicionFinal(),
+                    pt.getPremio() == null || pt.getPremio().trim().isEmpty() ? "-" : pt.getPremio()
             });
         }
     }
@@ -203,7 +214,7 @@ public class TorneosPanel extends JPanel {
 
     private void showCrearTorneoDialog() {
         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Registrar Torneo TCG", true);
-        dialog.setSize(460, 420);
+        dialog.setSize(500, 440);
         dialog.setLocationRelativeTo(this);
         dialog.setLayout(new BorderLayout(12, 12));
 
@@ -232,7 +243,16 @@ public class TorneosPanel extends JPanel {
 
         JTextField txtCosto = new JTextField("15.00");
         JSpinner spinCupo = new JSpinner(new SpinnerNumberModel(16, 2, 128, 2));
-        JTextField txtDias = new JTextField("7"); // En cuántos días
+        LocalDate[] fechaEvento = {LocalDate.now().plusDays(7)};
+        JLabel lblFechaEvento = new JLabel(fechaEvento[0].format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+        JButton btnFechaEvento = UITheme.createSecondaryButton("Elegir fecha...");
+        btnFechaEvento.addActionListener(e -> {
+            LocalDate seleccion = mostrarSelectorFecha(dialog, fechaEvento[0]);
+            if (seleccion != null) {
+                fechaEvento[0] = seleccion;
+                lblFechaEvento.setText(seleccion.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+            }
+        });
 
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.3;
         form.add(new JLabel("Nombre Torneo:*"), gbc);
@@ -260,9 +280,13 @@ public class TorneosPanel extends JPanel {
         form.add(spinCupo, gbc);
 
         gbc.gridx = 0; gbc.gridy = 5;
-        form.add(new JLabel("Fecha Evento (en días):"), gbc);
+        form.add(new JLabel("Fecha del evento:*"), gbc);
         gbc.gridx = 1;
-        form.add(txtDias, gbc);
+        JPanel fechaPanel = new JPanel(new BorderLayout(8, 0));
+        fechaPanel.setOpaque(false);
+        fechaPanel.add(lblFechaEvento, BorderLayout.CENTER);
+        fechaPanel.add(btnFechaEvento, BorderLayout.EAST);
+        form.add(fechaPanel, gbc);
 
         dialog.add(form, BorderLayout.CENTER);
 
@@ -276,13 +300,15 @@ public class TorneosPanel extends JPanel {
             }
 
             BigDecimal costo;
-            int dias;
             try {
                 costo = new BigDecimal(txtCosto.getText().trim());
-                dias = Integer.parseInt(txtDias.getText().trim());
-                if (costo.compareTo(BigDecimal.ZERO) < 0 || dias <= 0) throw new Exception();
-            } catch (Exception ex) {
-                JOptionPane.showMessageDialog(dialog, "Por favor introduce valores válidos para costo y días.", "Validación", JOptionPane.WARNING_MESSAGE);
+                if (costo.compareTo(BigDecimal.ZERO) < 0) throw new NumberFormatException();
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(dialog, "El costo de inscripción debe ser un valor válido mayor o igual a cero.", "Validación", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            if (fechaEvento[0].isBefore(LocalDate.now())) {
+                JOptionPane.showMessageDialog(dialog, "La fecha del torneo no puede estar en el pasado.", "Validación", JOptionPane.WARNING_MESSAGE);
                 return;
             }
 
@@ -294,8 +320,13 @@ public class TorneosPanel extends JPanel {
             int cupo = (int) spinCupo.getValue();
 
             Torneo nuevo = new Torneo(0, org, nom, (String) cmbJuego.getSelectedItem(),
-                    LocalDateTime.now().plusDays(dias).withHour(16).withMinute(0), costo, cupo, "Programado");
-            db.addTorneo(nuevo);
+                    fechaEvento[0].atTime(16, 0), costo, cupo, "Programado");
+            try {
+                db.addTorneo(nuevo);
+            } catch (RuntimeException ex) {
+                JOptionPane.showMessageDialog(dialog, "No se pudo registrar el torneo y su ticket de participación: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
 
             dialog.dispose();
             refreshTorneos();
@@ -340,7 +371,13 @@ public class TorneosPanel extends JPanel {
         for (Cliente c : db.getClientes()) cmbCliente.addItem(c);
 
         JTextField txtPlayerId = new JTextField("POP-");
-        JCheckBox chkPago = new JCheckBox("Confirmar pago de inscripción ($" + torneo.getCostoInscripcion() + ")", true);
+        boolean esGratuito = torneo.getCostoInscripcion().compareTo(BigDecimal.ZERO) == 0;
+        JCheckBox chkPago = new JCheckBox(esGratuito
+                ? "Inscripción gratuita: registrar ticket"
+                : "Confirmar pago de inscripción ($" + torneo.getCostoInscripcion() + ")", true);
+        chkPago.setEnabled(!esGratuito);
+        JComboBox<String> cmbMetodoPago = new JComboBox<>(new String[]{"Efectivo", "Tarjeta", "Transferencia"});
+        cmbMetodoPago.setEnabled(!esGratuito);
 
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.3;
         form.add(new JLabel("Torneo:"), gbc);
@@ -360,6 +397,12 @@ public class TorneosPanel extends JPanel {
         gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 2;
         form.add(chkPago, gbc);
 
+        gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 1;
+        form.add(new JLabel("Método de pago:"), gbc);
+        gbc.gridx = 1;
+        form.add(cmbMetodoPago, gbc);
+        chkPago.addActionListener(e -> cmbMetodoPago.setEnabled(chkPago.isSelected() && !esGratuito));
+
         dialog.add(form, BorderLayout.CENTER);
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -371,9 +414,10 @@ public class TorneosPanel extends JPanel {
                 return;
             }
 
-            ParticipanteTorneo pt = new ParticipanteTorneo(0, torneo, cli, txtPlayerId.getText().trim(), chkPago.isSelected(), null);
+            ParticipanteTorneo pt = new ParticipanteTorneo(0, torneo, cli, txtPlayerId.getText().trim(),
+                    esGratuito || chkPago.isSelected(), null);
             try {
-                db.inscribirParticipante(pt);
+                db.inscribirParticipante(pt, (String) cmbMetodoPago.getSelectedItem());
                 dialog.dispose();
                 refreshTorneos();
                 if (onDataChanged != null) onDataChanged.run();
@@ -390,6 +434,152 @@ public class TorneosPanel extends JPanel {
         btnPanel.add(btnInscribir);
         dialog.add(btnPanel, BorderLayout.SOUTH);
 
+        dialog.setVisible(true);
+    }
+
+    private LocalDate mostrarSelectorFecha(Window owner, LocalDate fechaInicial) {
+        JDialog calendario = new JDialog(owner, "Fecha del torneo", Dialog.ModalityType.APPLICATION_MODAL);
+        calendario.setLayout(new BorderLayout(8, 8));
+        calendario.setSize(360, 360);
+        calendario.setLocationRelativeTo(owner);
+
+        YearMonth[] mesMostrado = {YearMonth.from(fechaInicial)};
+        LocalDate[] fechaSeleccionada = {fechaInicial};
+        boolean[] confirmarSeleccion = {false};
+        JPanel diasPanel = new JPanel(new GridLayout(0, 7, 4, 4));
+        JLabel lblMes = new JLabel("", SwingConstants.CENTER);
+        lblMes.setFont(UITheme.FONT_SUBTITLE);
+
+        Runnable[] actualizarCalendario = new Runnable[1];
+        actualizarCalendario[0] = () -> {
+            lblMes.setText(mesMostrado[0].format(
+                    DateTimeFormatter.ofPattern("LLLL yyyy", new Locale("es", "MX"))));
+            diasPanel.removeAll();
+            for (String dia : new String[]{"L", "M", "X", "J", "V", "S", "D"}) {
+                JLabel encabezado = new JLabel(dia, SwingConstants.CENTER);
+                encabezado.setFont(UITheme.FONT_BOLD);
+                diasPanel.add(encabezado);
+            }
+
+            int desplazamiento = mesMostrado[0].atDay(1).getDayOfWeek().getValue() - 1;
+            for (int i = 0; i < desplazamiento; i++) diasPanel.add(new JLabel());
+            for (int dia = 1; dia <= mesMostrado[0].lengthOfMonth(); dia++) {
+                LocalDate fecha = mesMostrado[0].atDay(dia);
+                JButton btnDia = new JButton(String.valueOf(dia));
+                btnDia.setEnabled(!fecha.isBefore(LocalDate.now()));
+                if (fecha.equals(fechaSeleccionada[0])) {
+                    btnDia.setBackground(UITheme.COLOR_PRIMARY);
+                    btnDia.setForeground(Color.WHITE);
+                }
+                btnDia.addActionListener(e -> {
+                    fechaSeleccionada[0] = fecha;
+                    actualizarCalendario[0].run();
+                });
+                diasPanel.add(btnDia);
+            }
+            diasPanel.revalidate();
+            diasPanel.repaint();
+        };
+
+        JButton btnMesAnterior = UITheme.createSecondaryButton("<");
+        btnMesAnterior.addActionListener(e -> {
+            mesMostrado[0] = mesMostrado[0].minusMonths(1);
+            actualizarCalendario[0].run();
+        });
+        JButton btnMesSiguiente = UITheme.createSecondaryButton(">");
+        btnMesSiguiente.addActionListener(e -> {
+            mesMostrado[0] = mesMostrado[0].plusMonths(1);
+            actualizarCalendario[0].run();
+        });
+
+        JPanel navegacion = new JPanel(new BorderLayout());
+        navegacion.add(btnMesAnterior, BorderLayout.WEST);
+        navegacion.add(lblMes, BorderLayout.CENTER);
+        navegacion.add(btnMesSiguiente, BorderLayout.EAST);
+        JPanel contenido = new JPanel(new BorderLayout(8, 8));
+        contenido.setBorder(new EmptyBorder(12, 12, 4, 12));
+        contenido.add(navegacion, BorderLayout.NORTH);
+        contenido.add(diasPanel, BorderLayout.CENTER);
+        calendario.add(contenido, BorderLayout.CENTER);
+
+        JPanel acciones = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton btnCancelar = UITheme.createSecondaryButton("Cancelar");
+        btnCancelar.addActionListener(e -> calendario.dispose());
+        JButton btnSeleccionar = UITheme.createPrimaryButton("Seleccionar");
+        btnSeleccionar.addActionListener(e -> {
+            confirmarSeleccion[0] = true;
+            calendario.dispose();
+        });
+        acciones.add(btnCancelar);
+        acciones.add(btnSeleccionar);
+        calendario.add(acciones, BorderLayout.SOUTH);
+
+        actualizarCalendario[0].run();
+        calendario.setVisible(true);
+        return confirmarSeleccion[0] ? fechaSeleccionada[0] : null;
+    }
+
+    private void registrarResultadoParticipante() {
+        int row = tablePart.getSelectedRow();
+        if (row < 0 || row >= currentPartList.size()) {
+            JOptionPane.showMessageDialog(this, "Selecciona un participante para registrar su lugar y premio.", "Aviso", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        ParticipanteTorneo participante = currentPartList.get(row);
+        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Registrar ganador y premio", true);
+        dialog.setSize(420, 240);
+        dialog.setLocationRelativeTo(this);
+        dialog.setLayout(new BorderLayout(12, 12));
+
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setBorder(new EmptyBorder(16, 16, 16, 16));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(6, 6, 6, 6);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.gridx = 0; gbc.gridy = 0;
+        form.add(new JLabel("Participante:"), gbc);
+        gbc.gridx = 1;
+        form.add(new JLabel(participante.getCliente().getNombreCompleto()), gbc);
+
+        List<String> lugares = new ArrayList<>();
+        lugares.add("Sin lugar");
+        for (int i = 1; i <= currentPartList.size(); i++) lugares.add(String.valueOf(i));
+        JComboBox<String> cmbLugar = new JComboBox<>(lugares.toArray(new String[0]));
+        if (participante.getPosicionFinal() != null) {
+            cmbLugar.setSelectedItem(String.valueOf(participante.getPosicionFinal()));
+        }
+        JTextField txtPremio = new JTextField(participante.getPremio() == null ? "" : participante.getPremio());
+
+        gbc.gridx = 0; gbc.gridy = 1;
+        form.add(new JLabel("Lugar final:"), gbc);
+        gbc.gridx = 1;
+        form.add(cmbLugar, gbc);
+        gbc.gridx = 0; gbc.gridy = 2;
+        form.add(new JLabel("Premio:"), gbc);
+        gbc.gridx = 1;
+        form.add(txtPremio, gbc);
+        dialog.add(form, BorderLayout.CENTER);
+
+        JPanel acciones = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton btnCancelar = UITheme.createSecondaryButton("Cancelar");
+        btnCancelar.addActionListener(e -> dialog.dispose());
+        JButton btnGuardar = UITheme.createPrimaryButton("Guardar resultado");
+        btnGuardar.addActionListener(e -> {
+            String lugar = (String) cmbLugar.getSelectedItem();
+            Integer posicion = "Sin lugar".equals(lugar) ? null : Integer.valueOf(lugar);
+            String premio = txtPremio.getText().trim();
+            try {
+                db.actualizarResultadoParticipante(participante.getIdInscripcion(), posicion, premio);
+                dialog.dispose();
+                refreshParticipantes();
+            } catch (RuntimeException ex) {
+                JOptionPane.showMessageDialog(dialog, "No se pudo guardar el resultado: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        acciones.add(btnCancelar);
+        acciones.add(btnGuardar);
+        dialog.add(acciones, BorderLayout.SOUTH);
         dialog.setVisible(true);
     }
 

@@ -14,7 +14,9 @@ public class Producto {
     private String categoria; // 'Booster Box', 'Sleeves', 'Single Card', 'Deck', 'Elite Trainer Box', 'Tin'
     private String juegoTcg;  // 'Pokémon', 'Magic', 'Yu-Gi-Oh!', 'Lorcana'
     private BigDecimal precioUnitario;
+    private BigDecimal porcentajeApartado = new BigDecimal("30.00");
     private int stock;
+    private Integer idTorneo;
     private String tipoVenta = TIPO_VENTA_NORMAL;
     private LocalDate fechaSalida;
 
@@ -57,8 +59,17 @@ public class Producto {
     public BigDecimal getPrecioUnitario() { return precioUnitario; }
     public void setPrecioUnitario(BigDecimal precioUnitario) { this.precioUnitario = precioUnitario; }
 
+    public BigDecimal getPorcentajeApartado() { return porcentajeApartado; }
+    public void setPorcentajeApartado(BigDecimal porcentajeApartado) {
+        this.porcentajeApartado = porcentajeApartado != null ? porcentajeApartado : new BigDecimal("30.00");
+    }
+
     public int getStock() { return stock; }
     public void setStock(int stock) { this.stock = stock; }
+
+    public Integer getIdTorneo() { return idTorneo; }
+    public void setIdTorneo(Integer idTorneo) { this.idTorneo = idTorneo; }
+    public boolean isTicketTorneo() { return idTorneo != null && idTorneo > 0; }
 
     public LocalDate getFechaSalida() { return fechaSalida; }
     public void setFechaSalida(LocalDate fechaSalida) { this.fechaSalida = fechaSalida; }

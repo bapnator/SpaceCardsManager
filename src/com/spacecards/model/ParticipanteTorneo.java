@@ -12,6 +12,7 @@ public class ParticipanteTorneo {
     private LocalDateTime fechaInscripcion;
     private boolean pagoConfirmado;
     private Integer posicionFinal; // Nullable
+    private String premio;
 
     public ParticipanteTorneo() {
         this.fechaInscripcion = LocalDateTime.now();
@@ -63,4 +64,7 @@ public class ParticipanteTorneo {
 
     public Integer getPosicionFinal() { return posicionFinal; }
     public void setPosicionFinal(Integer posicionFinal) { this.posicionFinal = posicionFinal; }
+
+    public String getPremio() { return premio; }
+    public void setPremio(String premio) { this.premio = premio; }
 }

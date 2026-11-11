@@ -11,12 +11,15 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
 public class PreventasPanel extends JPanel {
+    private static final int DIAS_MARGEN_LLEGADA = 7;
+
     private final DatabaseService db = DatabaseService.getInstance();
     private final JTextField txtBuscar = new JTextField();
     private final JComboBox<String> cmbEstado = new JComboBox<>(new String[]{"Todos los estados", "Pendiente", "Entregado", "Cancelado"});
@@ -94,7 +97,7 @@ public class PreventasPanel extends JPanel {
 
         // Tabla
         tableModel = new DefaultTableModel(new String[]{
-                "ID", "Cliente", "Producto Reservado", "Anticipo", "Total", "Saldo Pendiente", "Fecha Solicitud", "Entrega Estimada", "Estado"
+                "ID", "Cliente", "Producto Reservado", "Anticipo", "Total", "Saldo Pendiente", "Fecha Solicitud", "Llegada Estimada", "Estado"
         }, 0) {
             @Override
             public boolean isCellEditable(int row, int col) { return false; }
@@ -142,7 +145,7 @@ public class PreventasPanel extends JPanel {
 
     private void showPreventaDialog() {
         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "PantallaCrearRegistroPreventa", true);
-        dialog.setSize(480, 440);
+        dialog.setSize(520, 440);
         dialog.setLocationRelativeTo(this);
         dialog.setLayout(new BorderLayout(12, 12));
 
@@ -165,17 +168,50 @@ public class PreventasPanel extends JPanel {
 
         JTextField txtTotal = new JTextField("0.00");
         JTextField txtAnticipo = new JTextField("0.00");
-        JTextField txtDiasEntrega = new JTextField("15");
+        txtAnticipo.setEditable(false);
+        JLabel lblFechaEntrega = new JLabel("Selecciona un producto");
 
-        // Al cambiar producto, autocompletar precio
+        Runnable actualizarAnticipo = () -> {
+            try {
+                Producto selected = (Producto) cmbProd.getSelectedItem();
+                if (selected == null) {
+                    txtAnticipo.setText("");
+                    return;
+                }
+                BigDecimal total = new BigDecimal(txtTotal.getText().trim());
+                BigDecimal anticipo = total.multiply(selected.getPorcentajeApartado())
+                        .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                txtAnticipo.setText(anticipo.toPlainString());
+            } catch (NumberFormatException ex) {
+                txtAnticipo.setText("");
+            }
+        };
+        txtTotal.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { actualizarAnticipo.run(); }
+            @Override
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { actualizarAnticipo.run(); }
+            @Override
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { actualizarAnticipo.run(); }
+        });
+
         cmbProd.addActionListener(e -> {
             Producto selected = (Producto) cmbProd.getSelectedItem();
             if (selected != null) {
                 txtTotal.setText(selected.getPrecioUnitario().toString());
-                txtAnticipo.setText(selected.getPrecioUnitario().multiply(new BigDecimal("0.3")).setScale(2, java.math.RoundingMode.HALF_UP).toString());
+                LocalDate fechaLlegada = calcularLlegadaEstimada(selected);
+                lblFechaEntrega.setText(fechaLlegada == null
+                        ? "Registra una fecha del proveedor en el producto"
+                        : formatearFechaEntrega(fechaLlegada));
+            } else {
+                lblFechaEntrega.setText("Selecciona un producto");
             }
+            actualizarAnticipo.run();
         });
-        if (cmbProd.getItemCount() > 0) cmbProd.setSelectedIndex(0);
+        if (cmbProd.getItemCount() > 0) {
+            cmbProd.setSelectedIndex(-1);
+            cmbProd.setSelectedIndex(0);
+        }
 
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.3;
         form.add(new JLabel("Cliente:*"), gbc);
@@ -198,14 +234,14 @@ public class PreventasPanel extends JPanel {
         form.add(txtTotal, gbc);
 
         gbc.gridx = 0; gbc.gridy = 4;
-        form.add(new JLabel("Monto Anticipo ($):*"), gbc);
+        form.add(new JLabel("Monto del apartado ($):"), gbc);
         gbc.gridx = 1;
         form.add(txtAnticipo, gbc);
 
         gbc.gridx = 0; gbc.gridy = 5;
-        form.add(new JLabel("Entrega en (días):*"), gbc);
+        form.add(new JLabel("Llegada estimada (+ " + DIAS_MARGEN_LLEGADA + " días):"), gbc);
         gbc.gridx = 1;
-        form.add(txtDiasEntrega, gbc);
+        form.add(lblFechaEntrega, gbc);
 
         dialog.add(form, BorderLayout.CENTER);
 
@@ -222,22 +258,38 @@ public class PreventasPanel extends JPanel {
             }
 
             BigDecimal total, anticipo;
-            int dias;
             try {
                 total = new BigDecimal(txtTotal.getText().trim());
                 anticipo = new BigDecimal(txtAnticipo.getText().trim());
-                dias = Integer.parseInt(txtDiasEntrega.getText().trim());
-
-                if (anticipo.compareTo(BigDecimal.ZERO) < 0 || total.compareTo(anticipo) < 0 || dias <= 0) {
-                    throw new Exception();
-                }
-            } catch (Exception ex) {
-                JOptionPane.showMessageDialog(dialog, "Valores numéricos no válidos (El anticipo no puede superar al total).", "Validación", JOptionPane.WARNING_MESSAGE);
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(dialog,
+                        "El total debe ser un valor numérico.",
+                        "Validación", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            LocalDate fechaLlegada = calcularLlegadaEstimada(prod);
+            if (fechaLlegada == null) {
+                JOptionPane.showMessageDialog(dialog,
+                        "El producto no tiene registrada su fecha estimada del proveedor. Actualiza el producto antes de registrar la preventa.",
+                        "Fecha pendiente", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            if (total.compareTo(BigDecimal.ZERO) <= 0 ||
+                    anticipo.compareTo(BigDecimal.ZERO) <= 0 ||
+                    total.compareTo(anticipo) < 0) {
+                JOptionPane.showMessageDialog(dialog,
+                        "El total debe ser mayor a cero y el monto del apartado no puede superar el total.",
+                        "Validación", JOptionPane.WARNING_MESSAGE);
                 return;
             }
 
-            Preventa nueva = new Preventa(0, cli, usr, prod, anticipo, total, LocalDate.now().plusDays(dias), "Pendiente");
-            db.addPreventa(nueva);
+            Preventa nueva = new Preventa(0, cli, usr, prod, anticipo, total, fechaLlegada, "Pendiente");
+            try {
+                db.addPreventa(nueva);
+            } catch (RuntimeException ex) {
+                JOptionPane.showMessageDialog(dialog, "No se pudo registrar la preventa: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
 
             dialog.dispose();
             refreshTable();
@@ -252,6 +304,14 @@ public class PreventasPanel extends JPanel {
         dialog.add(btnPanel, BorderLayout.SOUTH);
 
         dialog.setVisible(true);
+    }
+
+    private LocalDate calcularLlegadaEstimada(Producto producto) {
+        return producto.getFechaSalida() == null ? null : producto.getFechaSalida().plusDays(DIAS_MARGEN_LLEGADA);
+    }
+
+    private String formatearFechaEntrega(LocalDate fecha) {
+        return fecha.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
     }
 
     private void marcarEntregado() {

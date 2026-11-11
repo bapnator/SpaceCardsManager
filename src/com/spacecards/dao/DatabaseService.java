@@ -51,20 +51,49 @@ public class DatabaseService {
         public void setFechaRegistro(LocalDateTime fechaRegistro) { this.fechaRegistro = fechaRegistro; }
     }
 
+    public static class MovimientoCorteCaja {
+        private final int referencia;
+        private final LocalDateTime fecha;
+        private final String tipo;
+        private final String cliente;
+        private final String producto;
+        private final BigDecimal monto;
+        private final String metodoPago;
+
+        public MovimientoCorteCaja(int referencia, LocalDateTime fecha, String tipo,
+                                   String cliente, String producto, BigDecimal monto, String metodoPago) {
+            this.referencia = referencia;
+            this.fecha = fecha;
+            this.tipo = tipo;
+            this.cliente = cliente;
+            this.producto = producto;
+            this.monto = monto;
+            this.metodoPago = metodoPago;
+        }
+
+        public int getReferencia() { return referencia; }
+        public LocalDateTime getFecha() { return fecha; }
+        public String getTipo() { return tipo; }
+        public String getCliente() { return cliente; }
+        public String getProducto() { return producto; }
+        public BigDecimal getMonto() { return monto; }
+        public String getMetodoPago() { return metodoPago; }
+    }
+
     private static DatabaseService instance;
 
     private static final String DEFAULT_DB_FILE = "spacecards.db";
         private static final String[][] SQLITE_BACKUP_TABLES = {
             {"cliente", "id_cliente", "nombre", "apellido", "correo_electronico", "telefono", "fecha_registro"},
             {"usuario", "id_usuario", "nombre", "apellido", "rol", "horario", "activo"},
-            {"producto", "id_producto", "codigo_barras", "nombre", "descripcion", "categoria", "juego_tcg", "precio_unitario", "stock", "tipo_venta", "fecha_salida"},
+            {"producto", "id_producto", "codigo_barras", "nombre", "descripcion", "categoria", "juego_tcg", "precio_unitario", "porcentaje_apartado", "stock", "id_torneo", "tipo_venta", "fecha_salida"},
             {"categoria_producto", "id_categoria", "nombre", "descripcion", "activo", "fecha_registro"},
             {"franquicia", "id_franquicia", "nombre", "fabricante", "descripcion", "activo", "fecha_registro"},
-            {"venta", "id_venta", "id_cliente", "id_usuario", "fecha_venta", "monto_total", "metodo_pago"},
+            {"venta", "id_venta", "id_cliente", "id_usuario", "id_preventa", "fecha_venta", "monto_total", "metodo_pago"},
             {"detalle_venta", "id_detalle", "id_venta", "id_producto", "cantidad", "precio_historico"},
             {"preventa", "id_preventa", "id_cliente", "id_usuario", "id_producto", "monto_anticipo", "monto_total", "fecha_solicitud", "fecha_estimada_entrega", "estado"},
             {"torneo", "id_torneo", "id_organizador", "nombre_torneo", "juego_tcg", "fecha_evento", "costo_inscripcion", "cupo_maximo", "estado"},
-            {"participante_torneo", "id_inscripcion", "id_torneo", "id_cliente", "id_jugador_tcg", "fecha_inscripcion", "pago_confirmado", "posicion_final"}
+            {"participante_torneo", "id_inscripcion", "id_torneo", "id_cliente", "id_jugador_tcg", "fecha_inscripcion", "pago_confirmado", "posicion_final", "premio"}
         };
     private String currentDbPath = DEFAULT_DB_FILE;
     private Connection connection;
@@ -434,7 +463,9 @@ public class DatabaseService {
                         "categoria VARCHAR(50) NOT NULL," +
                         "juego_tcg VARCHAR(50) DEFAULT 'Pokémon'," +
                         "precio_unitario DECIMAL(10,2) NOT NULL CHECK (precio_unitario >= 0)," +
+                        "porcentaje_apartado DECIMAL(5,2) NOT NULL DEFAULT 30.00 CHECK (porcentaje_apartado > 0 AND porcentaje_apartado <= 100)," +
                         "stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0)," +
+                        "id_torneo INT NULL," +
                         "tipo_venta VARCHAR(20) NOT NULL DEFAULT 'VENTA_NORMAL'," +
                         "fecha_salida DATE NULL) ENGINE=InnoDB;");
 
@@ -450,6 +481,7 @@ public class DatabaseService {
                         "id_venta INT AUTO_INCREMENT PRIMARY KEY," +
                         "id_cliente INT NULL," +
                         "id_usuario INT NOT NULL," +
+                        "id_preventa INT NULL," +
                         "fecha_venta DATETIME DEFAULT CURRENT_TIMESTAMP," +
                         "monto_total DECIMAL(10,2) NOT NULL DEFAULT 0.00," +
                         "metodo_pago VARCHAR(30) NOT NULL CHECK (metodo_pago IN ('Efectivo', 'Tarjeta', 'Transferencia'))," +
@@ -503,6 +535,7 @@ public class DatabaseService {
                         "fecha_inscripcion DATETIME DEFAULT CURRENT_TIMESTAMP," +
                         "pago_confirmado BOOLEAN DEFAULT 0," +
                         "posicion_final INT NULL," +
+                        "premio VARCHAR(255) NULL," +
                         "FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo) ON DELETE CASCADE," +
                         "FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente)," +
                         "CONSTRAINT unique_jugador_torneo UNIQUE (id_torneo, id_cliente)) ENGINE=InnoDB;");
@@ -543,7 +576,9 @@ public class DatabaseService {
                         "categoria VARCHAR(50) NOT NULL," +
                         "juego_tcg VARCHAR(50) DEFAULT 'Pokémon'," +
                         "precio_unitario DECIMAL(10,2) NOT NULL CHECK (precio_unitario >= 0)," +
+                        "porcentaje_apartado DECIMAL(5,2) NOT NULL DEFAULT 30.00 CHECK (porcentaje_apartado > 0 AND porcentaje_apartado <= 100)," +
                         "stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0)," +
+                        "id_torneo INT NULL," +
                         "tipo_venta VARCHAR(20) NOT NULL DEFAULT 'VENTA_NORMAL'," +
                         "fecha_salida DATE NULL);");
 
@@ -559,6 +594,7 @@ public class DatabaseService {
                         "id_venta INTEGER PRIMARY KEY AUTOINCREMENT," +
                         "id_cliente INT NULL," +
                         "id_usuario INT NOT NULL," +
+                        "id_preventa INT NULL," +
                         "fecha_venta DATETIME DEFAULT CURRENT_TIMESTAMP," +
                         "monto_total DECIMAL(10,2) NOT NULL DEFAULT 0.00," +
                         "metodo_pago VARCHAR(30) NOT NULL CHECK (metodo_pago IN ('Efectivo', 'Tarjeta', 'Transferencia'))," +
@@ -612,6 +648,7 @@ public class DatabaseService {
                         "fecha_inscripcion DATETIME DEFAULT CURRENT_TIMESTAMP," +
                         "pago_confirmado BOOLEAN DEFAULT 0," +
                         "posicion_final INT NULL," +
+                        "premio VARCHAR(255) NULL," +
                         "FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo) ON DELETE CASCADE," +
                         "FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente)," +
                         "CONSTRAINT unique_jugador_torneo UNIQUE (id_torneo, id_cliente));");
@@ -628,7 +665,21 @@ public class DatabaseService {
         }
         ensureProductSaleTypeColumn(targetConnection);
         ensureProductReleaseDateColumn(targetConnection);
+        ensureProductDepositPercentageColumn(targetConnection);
+        ensureProductTournamentColumn(targetConnection);
+        ensureParticipantPrizeColumn(targetConnection);
+        ensurePreventaSaleColumn(targetConnection);
         ensureDefaultProductCategories(targetConnection);
+    }
+
+    private void ensurePreventaSaleColumn(Connection targetConnection) throws SQLException {
+        try (Statement st = targetConnection.createStatement()) {
+            st.executeQuery("SELECT id_preventa FROM venta LIMIT 0").close();
+        } catch (SQLException missingColumn) {
+            try (Statement st = targetConnection.createStatement()) {
+                st.executeUpdate("ALTER TABLE venta ADD COLUMN id_preventa INT NULL");
+            }
+        }
     }
 
     private void ensureProductSaleTypeColumn(Connection targetConnection) throws SQLException {
@@ -651,6 +702,36 @@ public class DatabaseService {
         }
     }
 
+    private void ensureProductDepositPercentageColumn(Connection targetConnection) throws SQLException {
+        try (Statement st = targetConnection.createStatement()) {
+            st.executeQuery("SELECT porcentaje_apartado FROM producto LIMIT 0").close();
+        } catch (SQLException missingColumn) {
+            try (Statement st = targetConnection.createStatement()) {
+                st.executeUpdate("ALTER TABLE producto ADD COLUMN porcentaje_apartado DECIMAL(5,2) NOT NULL DEFAULT 30.00");
+            }
+        }
+    }
+
+    private void ensureProductTournamentColumn(Connection targetConnection) throws SQLException {
+        try (Statement st = targetConnection.createStatement()) {
+            st.executeQuery("SELECT id_torneo FROM producto LIMIT 0").close();
+        } catch (SQLException missingColumn) {
+            try (Statement st = targetConnection.createStatement()) {
+                st.executeUpdate("ALTER TABLE producto ADD COLUMN id_torneo INT NULL");
+            }
+        }
+    }
+
+    private void ensureParticipantPrizeColumn(Connection targetConnection) throws SQLException {
+        try (Statement st = targetConnection.createStatement()) {
+            st.executeQuery("SELECT premio FROM participante_torneo LIMIT 0").close();
+        } catch (SQLException missingColumn) {
+            try (Statement st = targetConnection.createStatement()) {
+                st.executeUpdate("ALTER TABLE participante_torneo ADD COLUMN premio VARCHAR(255) NULL");
+            }
+        }
+    }
+
     private void ensureDefaultProductCategories(Connection targetConnection) throws SQLException {
         String[][] defaults = {
                 {"Carta individual", "Cartas individuales coleccionables."},
@@ -658,7 +739,8 @@ public class DatabaseService {
                 {"Caja de entrenador elite", "Cajas de entrenador elite y productos equivalentes."},
                 {"Fundas protectoras", "Fundas y protectores para cartas."},
                 {"Caja para mazo", "Cajas y accesorios para guardar mazos."},
-                {"Lata", "Latas y productos coleccionables en lata."}
+                {"Lata", "Latas y productos coleccionables en lata."},
+                {"Ticket de participación", "Inscripciones y tickets para torneos."}
         };
         try (PreparedStatement check = targetConnection.prepareStatement(
                 "SELECT id_categoria FROM categoria_producto WHERE nombre = ?");
@@ -1017,7 +1099,7 @@ public class DatabaseService {
 
     public synchronized List<Producto> getProductos() {
         List<Producto> list = new ArrayList<>();
-        String sql = "SELECT id_producto, codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, stock, tipo_venta, fecha_salida FROM producto ORDER BY id_producto ASC";
+        String sql = "SELECT id_producto, codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, porcentaje_apartado, stock, id_torneo, tipo_venta, fecha_salida FROM producto ORDER BY id_producto ASC";
         try (Statement st = getConnection().createStatement();
              ResultSet rs = st.executeQuery(sql)) {
             while (rs.next()) {
@@ -1029,7 +1111,10 @@ public class DatabaseService {
                 p.setCategoria(rs.getString("categoria"));
                 p.setJuegoTcg(rs.getString("juego_tcg"));
                 p.setPrecioUnitario(rs.getBigDecimal("precio_unitario"));
+                p.setPorcentajeApartado(rs.getBigDecimal("porcentaje_apartado"));
                 p.setStock(rs.getInt("stock"));
+                int idTorneo = rs.getInt("id_torneo");
+                p.setIdTorneo(rs.wasNull() ? null : idTorneo);
                 p.setTipoVenta(rs.getString("tipo_venta"));
                 String fechaSalida = rs.getString("fecha_salida");
                 p.setFechaSalida(fechaSalida == null || fechaSalida.trim().isEmpty() ? null : parseDate(fechaSalida));
@@ -1160,7 +1245,7 @@ public class DatabaseService {
     }
 
     public synchronized void addProducto(Producto p) {
-        String sql = "INSERT INTO producto (codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, stock, tipo_venta, fecha_salida) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO producto (codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, porcentaje_apartado, stock, id_torneo, tipo_venta, fecha_salida) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try {
             validarCodigoBarrasDisponible(p.getCodigoBarras(), 0);
             try (PreparedStatement ps = getConnection().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -1170,10 +1255,13 @@ public class DatabaseService {
             ps.setString(4, p.getCategoria());
             ps.setString(5, p.getJuegoTcg() != null ? p.getJuegoTcg() : "Pokémon");
             ps.setBigDecimal(6, p.getPrecioUnitario());
-            ps.setInt(7, p.getStock());
-            ps.setString(8, p.getTipoVenta());
-            if (p.getFechaSalida() != null) ps.setString(9, p.getFechaSalida().toString());
-            else ps.setNull(9, Types.DATE);
+            ps.setBigDecimal(7, p.getPorcentajeApartado());
+            ps.setInt(8, p.getStock());
+            if (p.getIdTorneo() != null) ps.setInt(9, p.getIdTorneo());
+            else ps.setNull(9, Types.INTEGER);
+            ps.setString(10, p.getTipoVenta());
+            if (p.getFechaSalida() != null) ps.setString(11, p.getFechaSalida().toString());
+            else ps.setNull(11, Types.DATE);
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (keys.next()) {
@@ -1190,7 +1278,7 @@ public class DatabaseService {
     }
 
     public synchronized void updateProducto(Producto p) {
-        String sql = "UPDATE producto SET codigo_barras = ?, nombre = ?, descripcion = ?, categoria = ?, juego_tcg = ?, precio_unitario = ?, stock = ?, tipo_venta = ?, fecha_salida = ? WHERE id_producto = ?";
+        String sql = "UPDATE producto SET codigo_barras = ?, nombre = ?, descripcion = ?, categoria = ?, juego_tcg = ?, precio_unitario = ?, porcentaje_apartado = ?, stock = ?, id_torneo = ?, tipo_venta = ?, fecha_salida = ? WHERE id_producto = ?";
         try {
             validarCodigoBarrasDisponible(p.getCodigoBarras(), p.getIdProducto());
             try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
@@ -1200,11 +1288,14 @@ public class DatabaseService {
             ps.setString(4, p.getCategoria());
             ps.setString(5, p.getJuegoTcg());
             ps.setBigDecimal(6, p.getPrecioUnitario());
-            ps.setInt(7, p.getStock());
-            ps.setString(8, p.getTipoVenta());
-            if (p.getFechaSalida() != null) ps.setString(9, p.getFechaSalida().toString());
-            else ps.setNull(9, Types.DATE);
-            ps.setInt(10, p.getIdProducto());
+            ps.setBigDecimal(7, p.getPorcentajeApartado());
+            ps.setInt(8, p.getStock());
+            if (p.getIdTorneo() != null) ps.setInt(9, p.getIdTorneo());
+            else ps.setNull(9, Types.INTEGER);
+            ps.setString(10, p.getTipoVenta());
+            if (p.getFechaSalida() != null) ps.setString(11, p.getFechaSalida().toString());
+            else ps.setNull(11, Types.DATE);
+            ps.setInt(12, p.getIdProducto());
             ps.executeUpdate();
             }
         } catch (IllegalArgumentException ex) {
@@ -1247,7 +1338,7 @@ public class DatabaseService {
     }
 
     public synchronized Producto findProductoById(int idProducto) {
-        String sql = "SELECT id_producto, codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, stock, tipo_venta, fecha_salida FROM producto WHERE id_producto = ?";
+        String sql = "SELECT id_producto, codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, porcentaje_apartado, stock, id_torneo, tipo_venta, fecha_salida FROM producto WHERE id_producto = ?";
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
             ps.setInt(1, idProducto);
             try (ResultSet rs = ps.executeQuery()) {
@@ -1260,7 +1351,10 @@ public class DatabaseService {
                     p.setCategoria(rs.getString("categoria"));
                     p.setJuegoTcg(rs.getString("juego_tcg"));
                     p.setPrecioUnitario(rs.getBigDecimal("precio_unitario"));
+                    p.setPorcentajeApartado(rs.getBigDecimal("porcentaje_apartado"));
                     p.setStock(rs.getInt("stock"));
+                    int idTorneo = rs.getInt("id_torneo");
+                    p.setIdTorneo(rs.wasNull() ? null : idTorneo);
                     p.setTipoVenta(rs.getString("tipo_venta"));
                     String fechaSalida = rs.getString("fecha_salida");
                     p.setFechaSalida(fechaSalida == null || fechaSalida.trim().isEmpty() ? null : parseDate(fechaSalida));
@@ -1507,6 +1601,82 @@ public class DatabaseService {
         return list;
     }
 
+    public synchronized List<MovimientoCorteCaja> getMovimientosCorteCaja(LocalDate fecha) {
+        List<MovimientoCorteCaja> movimientos = new ArrayList<>();
+        LocalDateTime inicio = fecha.atStartOfDay();
+        LocalDateTime fin = fecha.plusDays(1).atStartOfDay();
+        String sql = "SELECT v.id_venta AS referencia, v.fecha_venta AS fecha, " +
+                "CASE WHEN v.id_preventa IS NULL THEN 'Venta' ELSE 'Liquidación de preventa' END AS tipo, " +
+                "c.nombre AS cli_nombre, c.apellido AS cli_apellido, " +
+                "CASE WHEN v.id_preventa IS NULL THEN " +
+                "(SELECT GROUP_CONCAT(pv.nombre) FROM detalle_venta dv " +
+                "JOIN producto pv ON dv.id_producto = pv.id_producto " +
+                "WHERE dv.id_venta = v.id_venta AND pv.id_torneo IS NULL) " +
+                "ELSE p.nombre END AS producto, " +
+                "CASE WHEN v.id_preventa IS NULL THEN v.monto_total - COALESCE((SELECT SUM(dv.subtotal) " +
+                "FROM detalle_venta dv JOIN producto pt ON dv.id_producto = pt.id_producto " +
+                "WHERE dv.id_venta = v.id_venta AND pt.id_torneo IS NOT NULL), 0) " +
+                "ELSE v.monto_total - COALESCE(pr.monto_anticipo, 0) END AS monto, v.metodo_pago AS metodo " +
+                "FROM venta v " +
+                "LEFT JOIN preventa pr ON v.id_preventa = pr.id_preventa " +
+                "LEFT JOIN cliente c ON v.id_cliente = c.id_cliente " +
+                "LEFT JOIN producto p ON pr.id_producto = p.id_producto " +
+                "WHERE v.fecha_venta >= ? AND v.fecha_venta < ? " +
+                "AND (v.id_preventa IS NOT NULL OR NOT EXISTS (SELECT 1 FROM detalle_venta dt " +
+                "JOIN producto pt ON dt.id_producto = pt.id_producto " +
+                "WHERE dt.id_venta = v.id_venta AND pt.id_torneo IS NOT NULL) " +
+                "OR v.monto_total > COALESCE((SELECT SUM(dt.subtotal) FROM detalle_venta dt " +
+                "JOIN producto pt ON dt.id_producto = pt.id_producto " +
+                "WHERE dt.id_venta = v.id_venta AND pt.id_torneo IS NOT NULL), 0)) " +
+                "UNION ALL " +
+                "SELECT pr.id_preventa AS referencia, pr.fecha_solicitud AS fecha, " +
+                "'Apartado de preventa' AS tipo, c.nombre AS cli_nombre, c.apellido AS cli_apellido, " +
+                "p.nombre AS producto, pr.monto_anticipo AS monto, 'Apartado' AS metodo " +
+                "FROM preventa pr " +
+                "JOIN cliente c ON pr.id_cliente = c.id_cliente " +
+                "JOIN producto p ON pr.id_producto = p.id_producto " +
+                "WHERE pr.fecha_solicitud >= ? AND pr.fecha_solicitud < ? " +
+                "UNION ALL " +
+                "SELECT d.id_detalle AS referencia, v.fecha_venta AS fecha, " +
+                "'Inscripción a torneo' AS tipo, c.nombre AS cli_nombre, c.apellido AS cli_apellido, " +
+                "t.nombre_torneo AS producto, d.subtotal AS monto, v.metodo_pago AS metodo " +
+                "FROM detalle_venta d " +
+                "JOIN venta v ON d.id_venta = v.id_venta " +
+                "JOIN producto p ON d.id_producto = p.id_producto " +
+                "JOIN torneo t ON p.id_torneo = t.id_torneo " +
+                "LEFT JOIN cliente c ON v.id_cliente = c.id_cliente " +
+                "WHERE v.fecha_venta >= ? AND v.fecha_venta < ? " +
+                "ORDER BY fecha ASC, tipo ASC";
+
+        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            ps.setString(1, inicio.format(dtfDateTime));
+            ps.setString(2, fin.format(dtfDateTime));
+            ps.setString(3, inicio.format(dtfDateTime));
+            ps.setString(4, fin.format(dtfDateTime));
+            ps.setString(5, inicio.format(dtfDateTime));
+            ps.setString(6, fin.format(dtfDateTime));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String nombre = rs.getString("cli_nombre");
+                    String apellido = rs.getString("cli_apellido");
+                    String cliente = nombre == null ? "Público General" : nombre + " " + (apellido == null ? "" : apellido);
+                    movimientos.add(new MovimientoCorteCaja(
+                            rs.getInt("referencia"),
+                            parseDateTime(rs.getString("fecha")),
+                            rs.getString("tipo"),
+                            cliente.trim(),
+                            rs.getString("producto"),
+                            rs.getBigDecimal("monto"),
+                            rs.getString("metodo")
+                    ));
+                }
+            }
+        } catch (SQLException ex) {
+            throw new RuntimeException("Error al consultar el corte de caja: " + ex.getMessage(), ex);
+        }
+        return movimientos;
+    }
+
     public synchronized List<DetalleVenta> getDetallesByVenta(int idVenta) {
         List<DetalleVenta> list = new ArrayList<>();
         String sql = "SELECT d.id_detalle, d.id_venta, d.id_producto, d.cantidad, d.precio_historico, d.subtotal, " +
@@ -1564,7 +1734,7 @@ public class DatabaseService {
             conn.setAutoCommit(false);
 
             // 1. Validar stock en base de datos
-            String sqlCheckStock = "SELECT stock, nombre, tipo_venta FROM producto WHERE id_producto = ?";
+            String sqlCheckStock = "SELECT stock, nombre, tipo_venta, id_torneo FROM producto WHERE id_producto = ?";
             for (DetalleVenta d : v.getDetalles()) {
                 try (PreparedStatement psStock = conn.prepareStatement(sqlCheckStock)) {
                     psStock.setInt(1, d.getIdProducto());
@@ -1574,6 +1744,21 @@ public class DatabaseService {
                         }
                         int stockActual = rs.getInt("stock");
                         String nom = rs.getString("nombre");
+                        int idTorneo = rs.getInt("id_torneo");
+                        boolean esTicketTorneo = !rs.wasNull();
+                        if (esTicketTorneo) {
+                            if (d.getProducto() == null) d.setProducto(new Producto());
+                            d.getProducto().setIdProducto(d.getIdProducto());
+                            d.getProducto().setIdTorneo(idTorneo);
+                            if (d.getCantidad() != 1) {
+                                throw new Exception("Cada ticket de torneo debe cobrarse en una venta individual.");
+                            }
+                            if (v.getIdCliente() == null || v.getIdCliente() <= 0) {
+                                throw new Exception("Selecciona al participante como cliente para vender un ticket de torneo.");
+                            }
+                            validarTicketTorneo(conn, idTorneo, v.getIdCliente(), stockActual);
+                            continue;
+                        }
                         if (Producto.TIPO_PREVENTA.equalsIgnoreCase(rs.getString("tipo_venta"))) {
                             throw new Exception("El producto '" + nom + "' está marcado como preventa y no puede registrarse en el punto de venta.");
                         }
@@ -1636,10 +1821,21 @@ public class DatabaseService {
                         }
                     }
 
-                    // Descontar inventario
-                    psUpdateStock.setInt(1, d.getCantidad());
-                    psUpdateStock.setInt(2, d.getIdProducto());
-                    psUpdateStock.executeUpdate();
+                    if (d.getProducto().isTicketTorneo()) {
+                        boolean reservado = existeInscripcionPendiente(conn,
+                                d.getProducto().getIdTorneo(), v.getIdCliente());
+                        if (!reservado) {
+                            psUpdateStock.setInt(1, d.getCantidad());
+                            psUpdateStock.setInt(2, d.getIdProducto());
+                            psUpdateStock.executeUpdate();
+                        }
+                        confirmarTicketTorneo(conn, d.getProducto().getIdTorneo(), v.getIdCliente());
+                    } else {
+                        // Descontar inventario
+                        psUpdateStock.setInt(1, d.getCantidad());
+                        psUpdateStock.setInt(2, d.getIdProducto());
+                        psUpdateStock.executeUpdate();
+                    }
                 }
             }
 
@@ -1651,6 +1847,75 @@ public class DatabaseService {
             conn.setAutoCommit(originalAutoCommit);
         }
         syncSqliteBackup();
+    }
+
+    private void validarTicketTorneo(Connection conn, int idTorneo, int idCliente, int stockDisponible) throws Exception {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT pago_confirmado FROM participante_torneo WHERE id_torneo = ? AND id_cliente = ?")) {
+            ps.setInt(1, idTorneo);
+            ps.setInt(2, idCliente);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    if (rs.getInt("pago_confirmado") != 0) {
+                        throw new Exception("El cliente ya cuenta con un ticket pagado para este torneo.");
+                    }
+                    return;
+                }
+            }
+        }
+        if (stockDisponible <= 0) {
+            throw new Exception("El torneo ya agotó sus tickets de participación.");
+        }
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT cupo_maximo FROM torneo WHERE id_torneo = ?")) {
+            ps.setInt(1, idTorneo);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) throw new Exception("El torneo del ticket no existe.");
+                if (contarParticipantes(conn, idTorneo) >= rs.getInt("cupo_maximo")) {
+                    throw new Exception("El torneo ya alcanzó su cupo máximo.");
+                }
+            }
+        }
+    }
+
+    private int contarParticipantes(Connection conn, int idTorneo) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM participante_torneo WHERE id_torneo = ?")) {
+            ps.setInt(1, idTorneo);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        }
+    }
+
+    private boolean existeInscripcionPendiente(Connection conn, int idTorneo, int idCliente) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT 1 FROM participante_torneo WHERE id_torneo = ? AND id_cliente = ? AND pago_confirmado = 0")) {
+            ps.setInt(1, idTorneo);
+            ps.setInt(2, idCliente);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    private void confirmarTicketTorneo(Connection conn, int idTorneo, int idCliente) throws SQLException {
+        if (existeInscripcionPendiente(conn, idTorneo, idCliente)) {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE participante_torneo SET pago_confirmado = 1 WHERE id_torneo = ? AND id_cliente = ?")) {
+                ps.setInt(1, idTorneo);
+                ps.setInt(2, idCliente);
+                ps.executeUpdate();
+            }
+            return;
+        }
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO participante_torneo (id_torneo, id_cliente, fecha_inscripcion, pago_confirmado) VALUES (?, ?, ?, 1)")) {
+            ps.setInt(1, idTorneo);
+            ps.setInt(2, idCliente);
+            ps.setString(3, LocalDateTime.now().format(dtfDateTime));
+            ps.executeUpdate();
+        }
     }
 
     // =========================================================================
@@ -1788,14 +2053,15 @@ public class DatabaseService {
                 }
             }
 
-            String sqlVenta = "INSERT INTO venta (id_cliente, id_usuario, fecha_venta, monto_total, metodo_pago) VALUES (?, ?, ?, ?, ?)";
+            String sqlVenta = "INSERT INTO venta (id_cliente, id_usuario, id_preventa, fecha_venta, monto_total, metodo_pago) VALUES (?, ?, ?, ?, ?, ?)";
             int idVenta;
             try (PreparedStatement ps = conn.prepareStatement(sqlVenta, Statement.RETURN_GENERATED_KEYS)) {
                 ps.setInt(1, idCliente);
                 ps.setInt(2, idUsuario);
-                ps.setString(3, LocalDateTime.now().format(dtfDateTime));
-                ps.setBigDecimal(4, montoTotal);
-                ps.setString(5, metodoPago);
+                ps.setInt(3, idPreventa);
+                ps.setString(4, LocalDateTime.now().format(dtfDateTime));
+                ps.setBigDecimal(5, montoTotal);
+                ps.setString(6, metodoPago);
                 ps.executeUpdate();
                 try (ResultSet keys = ps.getGeneratedKeys()) {
                     if (!keys.next()) throw new SQLException("No se obtuvo el ID generado para la venta.");
@@ -1872,9 +2138,19 @@ public class DatabaseService {
     }
 
     public synchronized void addTorneo(Torneo t) {
+        Connection conn;
+        boolean originalAutoCommit;
+        try {
+            conn = getConnection();
+            originalAutoCommit = conn.getAutoCommit();
+        } catch (SQLException ex) {
+            throw new RuntimeException("No se pudo preparar el registro del torneo: " + ex.getMessage(), ex);
+        }
         String sql = "INSERT INTO torneo (id_organizador, nombre_torneo, juego_tcg, fecha_evento, costo_inscripcion, cupo_maximo, estado) " +
                 "VALUES (?, ?, ?, ?, ?, ?, ?)";
-        try (PreparedStatement ps = getConnection().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        try {
+            conn.setAutoCommit(false);
+            try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setInt(1, t.getIdOrganizador());
             ps.setString(2, t.getNombreTorneo());
             ps.setString(3, t.getJuegoTcg());
@@ -1884,13 +2160,38 @@ public class DatabaseService {
             ps.setString(7, t.getEstado() != null ? t.getEstado() : "Programado");
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
-                if (keys.next()) {
-                    t.setIdTorneo(keys.getInt(1));
-                    t.setParticipantesInscritos(0);
-                }
+                if (!keys.next()) throw new SQLException("No se obtuvo el ID generado para el torneo.");
+                t.setIdTorneo(keys.getInt(1));
+                t.setParticipantesInscritos(0);
             }
+            }
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO producto (codigo_barras, nombre, descripcion, categoria, juego_tcg, precio_unitario, porcentaje_apartado, stock, id_torneo, tipo_venta, fecha_salida) " +
+                            "VALUES (NULL, ?, ?, 'Ticket de participación', ?, ?, 30.00, ?, ?, ?, NULL)")) {
+                ps.setString(1, "Inscripción: " + t.getNombreTorneo());
+                ps.setString(2, "Ticket de participación para el torneo " + t.getNombreTorneo());
+                ps.setString(3, t.getJuegoTcg());
+                ps.setBigDecimal(4, t.getCostoInscripcion());
+                ps.setInt(5, t.getCupoMaximo());
+                ps.setInt(6, t.getIdTorneo());
+                ps.setString(7, Producto.TIPO_VENTA_NORMAL);
+                ps.executeUpdate();
+            }
+            conn.commit();
         } catch (SQLException ex) {
+            try {
+                conn.rollback();
+            } catch (SQLException rollbackError) {
+                ex.addSuppressed(rollbackError);
+            }
             throw new RuntimeException("Error al agregar torneo: " + ex.getMessage(), ex);
+        } finally {
+            try {
+                conn.setAutoCommit(originalAutoCommit);
+            } catch (SQLException ex) {
+                throw new RuntimeException("No se pudo restablecer la conexión tras guardar el torneo: " + ex.getMessage(), ex);
+            }
         }
         syncSqliteBackup();
     }
@@ -1917,7 +2218,7 @@ public class DatabaseService {
     public synchronized List<ParticipanteTorneo> getParticipantesByTorneo(int idTorneo) {
         List<ParticipanteTorneo> list = new ArrayList<>();
         String sql = "SELECT pt.id_inscripcion, pt.id_torneo, pt.id_cliente, pt.id_jugador_tcg, pt.fecha_inscripcion, " +
-                "pt.pago_confirmado, pt.posicion_final, " +
+                "pt.pago_confirmado, pt.posicion_final, pt.premio, " +
                 "c.nombre AS cli_nom, c.apellido AS cli_ape, c.correo_electronico AS cli_cor, c.telefono AS cli_tel " +
                 "FROM participante_torneo pt " +
                 "JOIN cliente c ON pt.id_cliente = c.id_cliente " +
@@ -1944,6 +2245,7 @@ public class DatabaseService {
                     pt.setPagoConfirmado(rs.getInt("pago_confirmado") != 0);
                     int pos = rs.getInt("posicion_final");
                     pt.setPosicionFinal(rs.wasNull() ? null : pos);
+                    pt.setPremio(rs.getString("premio"));
 
                     list.add(pt);
                 }
@@ -1955,49 +2257,118 @@ public class DatabaseService {
     }
 
     public synchronized void inscribirParticipante(ParticipanteTorneo pt) throws Exception {
-        // 1. Validar cupo
-        Torneo t = findTorneoById(pt.getIdTorneo());
-        if (t == null) throw new Exception("Torneo no encontrado.");
-        if (t.getCuposDisponibles() <= 0) {
-            throw new Exception("El torneo ya no cuenta con cupos disponibles (Cupo máximo: " + t.getCupoMaximo() + ").");
-        }
+        inscribirParticipante(pt, "Efectivo");
+    }
 
-        // 2. Validar duplicidad
-        String sqlCheck = "SELECT COUNT(*) FROM participante_torneo WHERE id_torneo = ? AND id_cliente = ?";
-        try (PreparedStatement psCheck = getConnection().prepareStatement(sqlCheck)) {
-            psCheck.setInt(1, pt.getIdTorneo());
-            psCheck.setInt(2, pt.getIdCliente());
-            try (ResultSet rs = psCheck.executeQuery()) {
-                if (rs.next() && rs.getInt(1) > 0) {
-                    throw new Exception("El cliente ya está inscrito en este torneo.");
-                }
-            }
-        }
-
-        // 3. Insertar
-        String sql = "INSERT INTO participante_torneo (id_torneo, id_cliente, id_jugador_tcg, fecha_inscripcion, pago_confirmado, posicion_final) " +
-                "VALUES (?, ?, ?, ?, ?, ?)";
-        try (PreparedStatement ps = getConnection().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            ps.setInt(1, pt.getIdTorneo());
-            ps.setInt(2, pt.getIdCliente());
-            ps.setString(3, pt.getIdJugadorTcg());
-            LocalDateTime fIns = pt.getFechaInscripcion() != null ? pt.getFechaInscripcion() : LocalDateTime.now();
-            ps.setString(4, fIns.format(dtfDateTime));
-            ps.setInt(5, pt.isPagoConfirmado() ? 1 : 0);
-            if (pt.getPosicionFinal() != null) {
-                ps.setInt(6, pt.getPosicionFinal());
-            } else {
-                ps.setNull(6, Types.INTEGER);
-            }
-            ps.executeUpdate();
-            try (ResultSet keys = ps.getGeneratedKeys()) {
-                if (keys.next()) {
-                    pt.setIdInscripcion(keys.getInt(1));
-                    pt.setFechaInscripcion(fIns);
-                }
-            }
+    public synchronized void inscribirParticipante(ParticipanteTorneo pt, String metodoPago) throws Exception {
+        Connection conn;
+        boolean originalAutoCommit;
+        try {
+            conn = getConnection();
+            originalAutoCommit = conn.getAutoCommit();
         } catch (SQLException ex) {
-            throw new Exception("Error al inscribir participante: " + ex.getMessage(), ex);
+            throw new Exception("No se pudo preparar la inscripción: " + ex.getMessage(), ex);
+        }
+        LocalDateTime fecha = pt.getFechaInscripcion() != null ? pt.getFechaInscripcion() : LocalDateTime.now();
+        try {
+            conn.setAutoCommit(false);
+            int cupoMaximo;
+            int idOrganizador;
+            BigDecimal costoInscripcion;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT cupo_maximo, id_organizador, costo_inscripcion FROM torneo WHERE id_torneo = ?")) {
+                ps.setInt(1, pt.getIdTorneo());
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) throw new Exception("Torneo no encontrado.");
+                    cupoMaximo = rs.getInt("cupo_maximo");
+                    idOrganizador = rs.getInt("id_organizador");
+                    costoInscripcion = rs.getBigDecimal("costo_inscripcion");
+                }
+            }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT COUNT(*) FROM participante_torneo WHERE id_torneo = ? AND id_cliente = ?")) {
+                ps.setInt(1, pt.getIdTorneo());
+                ps.setInt(2, pt.getIdCliente());
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next() && rs.getInt(1) > 0) throw new Exception("El cliente ya está inscrito en este torneo.");
+                }
+            }
+            if (contarParticipantes(conn, pt.getIdTorneo()) >= cupoMaximo) {
+                throw new Exception("El torneo ya no cuenta con cupos disponibles (Cupo máximo: " + cupoMaximo + ").");
+            }
+
+            int idProductoTicket;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT id_producto, stock FROM producto WHERE id_torneo = ?")) {
+                ps.setInt(1, pt.getIdTorneo());
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) throw new Exception("No existe el ticket de participación de este torneo.");
+                    idProductoTicket = rs.getInt("id_producto");
+                    if (rs.getInt("stock") <= 0) throw new Exception("El torneo ya agotó sus tickets de participación.");
+                }
+            }
+
+            boolean registrarPago = pt.isPagoConfirmado() || costoInscripcion.compareTo(BigDecimal.ZERO) == 0;
+            if (registrarPago) {
+                int idVenta;
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "INSERT INTO venta (id_cliente, id_usuario, fecha_venta, monto_total, metodo_pago) VALUES (?, ?, ?, ?, ?)",
+                        Statement.RETURN_GENERATED_KEYS)) {
+                    ps.setInt(1, pt.getIdCliente());
+                    ps.setInt(2, idOrganizador);
+                    ps.setString(3, fecha.format(dtfDateTime));
+                    ps.setBigDecimal(4, costoInscripcion);
+                    ps.setString(5, costoInscripcion.compareTo(BigDecimal.ZERO) == 0 ? "Efectivo" : metodoPago);
+                    ps.executeUpdate();
+                    try (ResultSet keys = ps.getGeneratedKeys()) {
+                        if (!keys.next()) throw new SQLException("No se obtuvo el ID generado para el ticket.");
+                        idVenta = keys.getInt(1);
+                    }
+                }
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "INSERT INTO detalle_venta (id_venta, id_producto, cantidad, precio_historico) VALUES (?, ?, 1, ?)")) {
+                    ps.setInt(1, idVenta);
+                    ps.setInt(2, idProductoTicket);
+                    ps.setBigDecimal(3, costoInscripcion);
+                    ps.executeUpdate();
+                }
+                pt.setPagoConfirmado(true);
+            } else {
+                pt.setPagoConfirmado(false);
+            }
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE producto SET stock = stock - 1 WHERE id_producto = ? AND stock > 0")) {
+                ps.setInt(1, idProductoTicket);
+                if (ps.executeUpdate() != 1) throw new Exception("No quedan tickets disponibles para este torneo.");
+            }
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO participante_torneo (id_torneo, id_cliente, id_jugador_tcg, fecha_inscripcion, pago_confirmado, posicion_final) " +
+                                "VALUES (?, ?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
+                ps.setInt(1, pt.getIdTorneo());
+                ps.setInt(2, pt.getIdCliente());
+                ps.setString(3, pt.getIdJugadorTcg());
+                ps.setString(4, fecha.format(dtfDateTime));
+                ps.setInt(5, pt.isPagoConfirmado() ? 1 : 0);
+                if (pt.getPosicionFinal() != null) ps.setInt(6, pt.getPosicionFinal());
+                else ps.setNull(6, Types.INTEGER);
+                ps.executeUpdate();
+                try (ResultSet keys = ps.getGeneratedKeys()) {
+                    if (keys.next()) pt.setIdInscripcion(keys.getInt(1));
+                }
+            }
+            pt.setFechaInscripcion(fecha);
+            conn.commit();
+        } catch (Exception ex) {
+            try {
+                conn.rollback();
+            } catch (SQLException rollbackError) {
+                ex.addSuppressed(rollbackError);
+            }
+            throw ex;
+        } finally {
+            conn.setAutoCommit(originalAutoCommit);
         }
         syncSqliteBackup();
     }
@@ -2009,6 +2380,21 @@ public class DatabaseService {
             ps.executeUpdate();
         } catch (SQLException ex) {
             throw new RuntimeException("Error al cancelar inscripción: " + ex.getMessage(), ex);
+        }
+        syncSqliteBackup();
+    }
+
+    public synchronized void actualizarResultadoParticipante(int idInscripcion, Integer posicion, String premio) {
+        String sql = "UPDATE participante_torneo SET posicion_final = ?, premio = ? WHERE id_inscripcion = ?";
+        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            if (posicion == null) ps.setNull(1, Types.INTEGER);
+            else ps.setInt(1, posicion);
+            if (premio == null || premio.trim().isEmpty()) ps.setNull(2, Types.VARCHAR);
+            else ps.setString(2, premio.trim());
+            ps.setInt(3, idInscripcion);
+            if (ps.executeUpdate() != 1) throw new SQLException("No se encontró la inscripción seleccionada.");
+        } catch (SQLException ex) {
+            throw new RuntimeException("Error al registrar el lugar y premio: " + ex.getMessage(), ex);
         }
         syncSqliteBackup();
     }

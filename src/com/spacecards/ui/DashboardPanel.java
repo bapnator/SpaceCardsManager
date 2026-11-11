@@ -10,6 +10,8 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
@@ -51,9 +53,16 @@ public class DashboardPanel extends JPanel {
 
         headerPanel.add(titleBox, BorderLayout.WEST);
 
+        JPanel headerActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        headerActions.setOpaque(false);
+        JButton btnCorteCaja = UITheme.createPrimaryButton("Corte de caja de hoy");
+        btnCorteCaja.addActionListener(e -> showCorteCajaDialog());
+        headerActions.add(btnCorteCaja);
+
         JButton btnRefresh = UITheme.createSecondaryButton("Actualizar");
         btnRefresh.addActionListener(e -> refreshData());
-        headerPanel.add(btnRefresh, BorderLayout.EAST);
+        headerActions.add(btnRefresh);
+        headerPanel.add(headerActions, BorderLayout.EAST);
 
         this.add(headerPanel, BorderLayout.NORTH);
 
@@ -266,5 +275,106 @@ public class DashboardPanel extends JPanel {
         dlg.add(btnBar, BorderLayout.SOUTH);
 
         dlg.setVisible(true);
+    }
+
+    private void showCorteCajaDialog() {
+        LocalDate hoy = LocalDate.now();
+        List<DatabaseService.MovimientoCorteCaja> movimientos;
+        try {
+            movimientos = db.getMovimientosCorteCaja(hoy);
+        } catch (RuntimeException ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error al generar el corte", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        BigDecimal ventas = BigDecimal.ZERO;
+        BigDecimal apartados = BigDecimal.ZERO;
+        BigDecimal liquidaciones = BigDecimal.ZERO;
+        BigDecimal recaudacionTorneos = BigDecimal.ZERO;
+        DefaultTableModel corteModel = new DefaultTableModel(
+                new String[]{"Hora", "Tipo", "Referencia", "Cliente", "Producto", "Método", "Ingreso"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int col) { return false; }
+        };
+
+        for (DatabaseService.MovimientoCorteCaja movimiento : movimientos) {
+            String tipo = movimiento.getTipo();
+            if ("Venta".equals(tipo)) {
+                ventas = ventas.add(movimiento.getMonto());
+            } else if ("Apartado de preventa".equals(tipo)) {
+                apartados = apartados.add(movimiento.getMonto());
+            } else if ("Liquidación de preventa".equals(tipo)) {
+                liquidaciones = liquidaciones.add(movimiento.getMonto());
+            } else if ("Inscripción a torneo".equals(tipo)) {
+                recaudacionTorneos = recaudacionTorneos.add(movimiento.getMonto());
+            }
+
+            String referencia;
+            if ("Venta".equals(tipo)) {
+                referencia = "Venta #" + movimiento.getReferencia();
+            } else if ("Apartado de preventa".equals(tipo) || "Liquidación de preventa".equals(tipo)) {
+                referencia = "Preventa #" + movimiento.getReferencia();
+            } else {
+                referencia = "Ticket #" + movimiento.getReferencia();
+            }
+            corteModel.addRow(new Object[]{
+                    movimiento.getFecha().format(DateTimeFormatter.ofPattern("HH:mm")),
+                    tipo,
+                    referencia,
+                    movimiento.getCliente(),
+                    movimiento.getProducto() == null ? "-" : movimiento.getProducto(),
+                    movimiento.getMetodoPago(),
+                    formatMoney(movimiento.getMonto())
+            });
+        }
+
+        BigDecimal total = ventas.add(apartados).add(liquidaciones).add(recaudacionTorneos);
+        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this),
+                "Corte de caja - " + hoy.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), true);
+        dialog.setSize(1050, 620);
+        dialog.setLocationRelativeTo(this);
+        dialog.setLayout(new BorderLayout(12, 12));
+
+        JPanel resumen = new JPanel(new GridLayout(1, 5, 12, 0));
+        resumen.setBorder(new EmptyBorder(12, 16, 0, 16));
+        resumen.add(createCorteResumen("Ventas del día", ventas));
+        resumen.add(createCorteResumen("Apartados de preventa", apartados));
+        resumen.add(createCorteResumen("Liquidaciones de preventa", liquidaciones));
+        resumen.add(createCorteResumen("Recaudación de torneos", recaudacionTorneos));
+        resumen.add(createCorteResumen("Total recaudado", total));
+
+        JTable tableCorte = new JTable(corteModel);
+        UITheme.formatTable(tableCorte);
+        JPanel contenido = new JPanel(new BorderLayout(8, 8));
+        contenido.setBorder(new EmptyBorder(0, 16, 0, 16));
+        contenido.add(resumen, BorderLayout.NORTH);
+        contenido.add(new JScrollPane(tableCorte), BorderLayout.CENTER);
+        dialog.add(contenido, BorderLayout.CENTER);
+
+        JPanel acciones = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        acciones.setBorder(new EmptyBorder(0, 12, 8, 12));
+        JButton btnCerrar = UITheme.createSecondaryButton("Cerrar");
+        btnCerrar.addActionListener(e -> dialog.dispose());
+        acciones.add(btnCerrar);
+        dialog.add(acciones, BorderLayout.SOUTH);
+        dialog.setVisible(true);
+    }
+
+    private JPanel createCorteResumen(String titulo, BigDecimal monto) {
+        JPanel card = UITheme.createCardPanel();
+        card.setLayout(new BorderLayout(4, 4));
+        JLabel lblTitulo = new JLabel(titulo);
+        lblTitulo.setFont(UITheme.FONT_REGULAR);
+        lblTitulo.setForeground(UITheme.COLOR_TEXT_MUTED);
+        JLabel lblMonto = new JLabel(formatMoney(monto));
+        lblMonto.setFont(UITheme.FONT_BOLD);
+        lblMonto.setForeground(UITheme.COLOR_SUCCESS);
+        card.add(lblTitulo, BorderLayout.NORTH);
+        card.add(lblMonto, BorderLayout.CENTER);
+        return card;
+    }
+
+    private String formatMoney(BigDecimal monto) {
+        return "$" + monto.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 }

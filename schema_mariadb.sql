@@ -65,7 +65,9 @@ CREATE TABLE IF NOT EXISTS producto (
     categoria VARCHAR(50) NOT NULL,
     juego_tcg VARCHAR(50) DEFAULT 'Pokémon',
     precio_unitario DECIMAL(10,2) NOT NULL CHECK (precio_unitario >= 0),
+    porcentaje_apartado DECIMAL(5,2) NOT NULL DEFAULT 30.00 CHECK (porcentaje_apartado > 0 AND porcentaje_apartado <= 100),
     stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0),
+    id_torneo INT NULL,
     tipo_venta VARCHAR(20) NOT NULL DEFAULT 'VENTA_NORMAL',
     fecha_salida DATE NULL
 ) ENGINE=InnoDB;
@@ -85,6 +87,7 @@ CREATE TABLE IF NOT EXISTS venta (
     id_venta INT AUTO_INCREMENT PRIMARY KEY,
     id_cliente INT NULL,
     id_usuario INT NOT NULL,
+    id_preventa INT NULL,
     fecha_venta DATETIME DEFAULT CURRENT_TIMESTAMP,
     monto_total DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     metodo_pago VARCHAR(30) NOT NULL CHECK (metodo_pago IN ('Efectivo', 'Tarjeta', 'Transferencia')),
@@ -150,6 +153,7 @@ CREATE TABLE IF NOT EXISTS participante_torneo (
     fecha_inscripcion DATETIME DEFAULT CURRENT_TIMESTAMP,
     pago_confirmado BOOLEAN DEFAULT 0,
     posicion_final INT NULL,
+    premio VARCHAR(255) NULL,
     FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo) ON DELETE CASCADE,
     FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente),
     CONSTRAINT unique_jugador_torneo UNIQUE (id_torneo, id_cliente)
