@@ -91,9 +91,10 @@ public class DatabaseService {
             {"franquicia", "id_franquicia", "nombre", "fabricante", "descripcion", "activo", "fecha_registro"},
             {"venta", "id_venta", "id_cliente", "id_usuario", "id_preventa", "fecha_venta", "monto_total", "metodo_pago"},
             {"detalle_venta", "id_detalle", "id_venta", "id_producto", "cantidad", "precio_historico"},
-            {"preventa", "id_preventa", "id_cliente", "id_usuario", "id_producto", "monto_anticipo", "monto_total", "fecha_solicitud", "fecha_estimada_entrega", "estado"},
+            {"preventa", "id_preventa", "id_cliente", "id_usuario", "id_producto", "monto_anticipo", "monto_total", "fecha_solicitud", "fecha_estimada_entrega", "fecha_vencimiento_apartado", "estado"},
             {"torneo", "id_torneo", "id_organizador", "nombre_torneo", "juego_tcg", "fecha_evento", "costo_inscripcion", "cupo_maximo", "estado"},
-            {"participante_torneo", "id_inscripcion", "id_torneo", "id_cliente", "id_jugador_tcg", "fecha_inscripcion", "pago_confirmado", "posicion_final", "premio"}
+            {"participante_torneo", "id_inscripcion", "id_torneo", "id_cliente", "id_jugador_tcg", "fecha_inscripcion", "pago_confirmado", "posicion_final", "premio"},
+            {"configuracion_sistema", "clave", "valor"}
         };
     private String currentDbPath = DEFAULT_DB_FILE;
     private Connection connection;
@@ -509,6 +510,7 @@ public class DatabaseService {
                         "monto_total DECIMAL(10,2) NOT NULL CHECK (monto_total >= monto_anticipo)," +
                         "fecha_solicitud DATETIME DEFAULT CURRENT_TIMESTAMP," +
                         "fecha_estimada_entrega DATE NOT NULL," +
+                        "fecha_vencimiento_apartado DATE NULL," +
                         "estado VARCHAR(20) DEFAULT 'Pendiente' CHECK (estado IN ('Pendiente', 'Entregado', 'Cancelado'))," +
                         "FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente)," +
                         "FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario)," +
@@ -548,6 +550,10 @@ public class DatabaseService {
                         "descripcion TEXT," +
                         "activo BOOLEAN DEFAULT 1," +
                         "fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB;");
+
+                st.execute("CREATE TABLE IF NOT EXISTS configuracion_sistema (" +
+                        "clave VARCHAR(100) PRIMARY KEY," +
+                        "valor VARCHAR(255) NOT NULL) ENGINE=InnoDB;");
             } else {
                 // TABLA: CLIENTE (SQLite)
                 st.execute("CREATE TABLE IF NOT EXISTS cliente (" +
@@ -622,6 +628,7 @@ public class DatabaseService {
                         "monto_total DECIMAL(10,2) NOT NULL CHECK (monto_total >= monto_anticipo)," +
                         "fecha_solicitud DATETIME DEFAULT CURRENT_TIMESTAMP," +
                         "fecha_estimada_entrega DATE NOT NULL," +
+                        "fecha_vencimiento_apartado DATE NULL," +
                         "estado VARCHAR(20) DEFAULT 'Pendiente' CHECK (estado IN ('Pendiente', 'Entregado', 'Cancelado'))," +
                         "FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente)," +
                         "FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario)," +
@@ -661,6 +668,10 @@ public class DatabaseService {
                         "descripcion TEXT," +
                         "activo BOOLEAN DEFAULT 1," +
                         "fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP);");
+
+                st.execute("CREATE TABLE IF NOT EXISTS configuracion_sistema (" +
+                        "clave VARCHAR(100) PRIMARY KEY," +
+                        "valor VARCHAR(255) NOT NULL);");
             }
         }
         ensureProductSaleTypeColumn(targetConnection);
@@ -669,6 +680,7 @@ public class DatabaseService {
         ensureProductTournamentColumn(targetConnection);
         ensureParticipantPrizeColumn(targetConnection);
         ensurePreventaSaleColumn(targetConnection);
+        ensurePreventaExpirationColumn(targetConnection);
         ensureDefaultProductCategories(targetConnection);
     }
 
@@ -679,6 +691,38 @@ public class DatabaseService {
             try (Statement st = targetConnection.createStatement()) {
                 st.executeUpdate("ALTER TABLE venta ADD COLUMN id_preventa INT NULL");
             }
+        }
+    }
+
+    private void ensurePreventaExpirationColumn(Connection targetConnection) throws SQLException {
+        try (Statement st = targetConnection.createStatement()) {
+            st.executeQuery("SELECT fecha_vencimiento_apartado FROM preventa LIMIT 0").close();
+        } catch (SQLException missingColumn) {
+            try (Statement st = targetConnection.createStatement()) {
+                st.executeUpdate("ALTER TABLE preventa ADD COLUMN fecha_vencimiento_apartado DATE NULL");
+            }
+        }
+
+        String sql = "SELECT id_preventa, fecha_solicitud FROM preventa WHERE fecha_vencimiento_apartado IS NULL";
+        List<Integer> preventasSinVencimiento = new ArrayList<>();
+        List<LocalDate> fechasVencimiento = new ArrayList<>();
+        try (Statement st = targetConnection.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            while (rs.next()) {
+                LocalDateTime fechaSolicitud = parseDateTime(rs.getString("fecha_solicitud"));
+                LocalDate fechaBase = fechaSolicitud != null ? fechaSolicitud.toLocalDate() : LocalDate.now();
+                preventasSinVencimiento.add(rs.getInt("id_preventa"));
+                fechasVencimiento.add(fechaBase.plusDays(30));
+            }
+        }
+        try (PreparedStatement update = targetConnection.prepareStatement(
+                "UPDATE preventa SET fecha_vencimiento_apartado = ? WHERE id_preventa = ?")) {
+            for (int i = 0; i < preventasSinVencimiento.size(); i++) {
+                update.setString(1, fechasVencimiento.get(i).format(dtfDate));
+                update.setInt(2, preventasSinVencimiento.get(i));
+                update.addBatch();
+            }
+            update.executeBatch();
         }
     }
 
@@ -1925,7 +1969,7 @@ public class DatabaseService {
     public synchronized List<Preventa> getPreventas() {
         List<Preventa> list = new ArrayList<>();
         String sql = "SELECT pr.id_preventa, pr.id_cliente, pr.id_usuario, pr.id_producto, pr.monto_anticipo, pr.monto_total, " +
-                "pr.fecha_solicitud, pr.fecha_estimada_entrega, pr.estado, " +
+                "pr.fecha_solicitud, pr.fecha_estimada_entrega, pr.fecha_vencimiento_apartado, pr.estado, " +
                 "c.nombre AS cli_nom, c.apellido AS cli_ape, c.correo_electronico AS cli_cor, c.telefono AS cli_tel, " +
                 "u.nombre AS usr_nom, u.apellido AS usr_ape, u.rol AS usr_rol, " +
                 "p.nombre AS prod_nom, p.categoria AS prod_cat, p.juego_tcg AS prod_juego, p.precio_unitario AS prod_precio, p.stock AS prod_stock " +
@@ -1968,6 +2012,7 @@ public class DatabaseService {
                 pr.setMontoTotal(rs.getBigDecimal("monto_total"));
                 pr.setFechaSolicitud(parseDateTime(rs.getString("fecha_solicitud")));
                 pr.setFechaEstimadaEntrega(parseDate(rs.getString("fecha_estimada_entrega")));
+                pr.setFechaVencimientoApartado(parseDate(rs.getString("fecha_vencimiento_apartado")));
                 pr.setEstado(rs.getString("estado"));
 
                 list.add(pr);
@@ -1991,8 +2036,8 @@ public class DatabaseService {
             throw new RuntimeException("Error al validar producto de preventa: " + ex.getMessage(), ex);
         }
 
-        String sql = "INSERT INTO preventa (id_cliente, id_usuario, id_producto, monto_anticipo, monto_total, fecha_solicitud, fecha_estimada_entrega, estado) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO preventa (id_cliente, id_usuario, id_producto, monto_anticipo, monto_total, fecha_solicitud, fecha_estimada_entrega, fecha_vencimiento_apartado, estado) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = getConnection().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setInt(1, p.getIdCliente());
             ps.setInt(2, p.getIdUsuario());
@@ -2002,7 +2047,12 @@ public class DatabaseService {
             LocalDateTime fSol = p.getFechaSolicitud() != null ? p.getFechaSolicitud() : LocalDateTime.now();
             ps.setString(6, fSol.format(dtfDateTime));
             ps.setString(7, p.getFechaEstimadaEntrega().format(dtfDate));
-            ps.setString(8, p.getEstado() != null ? p.getEstado() : "Pendiente");
+            LocalDate fechaVencimiento = p.getFechaVencimientoApartado() != null
+                    ? p.getFechaVencimientoApartado()
+                    : fSol.toLocalDate().plusDays(getDiasVigenciaApartado());
+            p.setFechaVencimientoApartado(fechaVencimiento);
+            ps.setString(8, fechaVencimiento.format(dtfDate));
+            ps.setString(9, p.getEstado() != null ? p.getEstado() : "Pendiente");
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (keys.next()) {
@@ -2138,6 +2188,9 @@ public class DatabaseService {
     }
 
     public synchronized void addTorneo(Torneo t) {
+        if (t.getCupoMaximo() < 2 || t.getCupoMaximo() % 2 != 0) {
+            throw new IllegalArgumentException("El cupo máximo del torneo debe ser un número par mayor o igual a 2.");
+        }
         Connection conn;
         boolean originalAutoCommit;
         try {
@@ -2397,6 +2450,147 @@ public class DatabaseService {
             throw new RuntimeException("Error al registrar el lugar y premio: " + ex.getMessage(), ex);
         }
         syncSqliteBackup();
+    }
+
+    public synchronized int getDiasMargenLlegada() {
+        return obtenerParametroEntero("margen_llegada_preventa_dias", 7, "margen de llegada");
+    }
+
+    public synchronized void setDiasMargenLlegada(int dias) {
+        if (dias < 0 || dias > 365) {
+            throw new IllegalArgumentException("El margen de llegada debe estar entre 0 y 365 días.");
+        }
+        guardarParametros(Collections.singletonMap("margen_llegada_preventa_dias", String.valueOf(dias)));
+    }
+
+    public synchronized BigDecimal getPorcentajeApartadoPredeterminado() {
+        return obtenerParametroDecimal("porcentaje_apartado_predeterminado", new BigDecimal("30.00"),
+                "porcentaje predeterminado de apartado");
+    }
+
+    public synchronized int getDiasVigenciaApartado() {
+        return obtenerParametroEntero("vigencia_apartado_dias", 30, "vigencia del apartado");
+    }
+
+    public synchronized int getCupoTorneoPredeterminado() {
+        int cupo = obtenerParametroEntero("cupo_torneo_predeterminado", 16, "cupo predeterminado de torneo");
+        if (cupo < 2 || cupo % 2 != 0) {
+            throw new RuntimeException("El cupo predeterminado guardado debe ser un número par mayor o igual a 2.");
+        }
+        return cupo;
+    }
+
+    public synchronized BigDecimal getCostoTorneoPredeterminado() {
+        return obtenerParametroDecimal("costo_torneo_predeterminado", new BigDecimal("15.00"),
+                "costo predeterminado de torneo");
+    }
+
+    public synchronized void guardarParametrosOperativos(int diasMargenLlegada, BigDecimal porcentajeApartado,
+                                                          int diasVigenciaApartado, BigDecimal costoTorneo,
+                                                          int cupoTorneo) {
+        if (diasMargenLlegada < 0 || diasMargenLlegada > 365) {
+            throw new IllegalArgumentException("El margen de llegada debe estar entre 0 y 365 días.");
+        }
+        validarPorcentajeApartado(porcentajeApartado);
+        if (diasVigenciaApartado < 0 || diasVigenciaApartado > 365) {
+            throw new IllegalArgumentException("La vigencia del apartado debe estar entre 0 y 365 días.");
+        }
+        validarCostoTorneo(costoTorneo);
+        if (cupoTorneo < 2 || cupoTorneo % 2 != 0) {
+            throw new IllegalArgumentException("El cupo predeterminado debe ser un número par mayor o igual a 2.");
+        }
+
+        Map<String, String> parametros = new LinkedHashMap<>();
+        parametros.put("margen_llegada_preventa_dias", String.valueOf(diasMargenLlegada));
+        parametros.put("porcentaje_apartado_predeterminado", porcentajeApartado.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString());
+        parametros.put("vigencia_apartado_dias", String.valueOf(diasVigenciaApartado));
+        parametros.put("costo_torneo_predeterminado", costoTorneo.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString());
+        parametros.put("cupo_torneo_predeterminado", String.valueOf(cupoTorneo));
+        guardarParametros(parametros);
+    }
+
+    private int obtenerParametroEntero(String clave, int valorPredeterminado, String nombre) {
+        try {
+            return Integer.parseInt(obtenerParametro(clave, String.valueOf(valorPredeterminado)));
+        } catch (NumberFormatException ex) {
+            throw new RuntimeException("El valor guardado para " + nombre + " no es válido.", ex);
+        }
+    }
+
+    private BigDecimal obtenerParametroDecimal(String clave, BigDecimal valorPredeterminado, String nombre) {
+        try {
+            return new BigDecimal(obtenerParametro(clave, valorPredeterminado.toPlainString()));
+        } catch (NumberFormatException ex) {
+            throw new RuntimeException("El valor guardado para " + nombre + " no es válido.", ex);
+        }
+    }
+
+    private String obtenerParametro(String clave, String valorPredeterminado) {
+        try (PreparedStatement ps = getConnection().prepareStatement(
+                "SELECT valor FROM configuracion_sistema WHERE clave = ?")) {
+            ps.setString(1, clave);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString("valor") : valorPredeterminado;
+            }
+        } catch (SQLException ex) {
+            throw new RuntimeException("Error al consultar el parámetro " + clave + ": " + ex.getMessage(), ex);
+        }
+    }
+
+    private void guardarParametros(Map<String, String> parametros) {
+        Connection conn = null;
+        boolean autoCommitOriginal = true;
+        try {
+            conn = getConnection();
+            autoCommitOriginal = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try (PreparedStatement exists = conn.prepareStatement(
+                    "SELECT 1 FROM configuracion_sistema WHERE clave = ?");
+                 PreparedStatement update = conn.prepareStatement(
+                    "UPDATE configuracion_sistema SET valor = ? WHERE clave = ?");
+                 PreparedStatement insert = conn.prepareStatement(
+                         "INSERT INTO configuracion_sistema (clave, valor) VALUES (?, ?)")) {
+                for (Map.Entry<String, String> parametro : parametros.entrySet()) {
+                    exists.setString(1, parametro.getKey());
+                    boolean encontrado;
+                    try (ResultSet rs = exists.executeQuery()) {
+                        encontrado = rs.next();
+                    }
+                    if (!encontrado) {
+                        insert.setString(1, parametro.getKey());
+                        insert.setString(2, parametro.getValue());
+                        insert.executeUpdate();
+                        continue;
+                    }
+                    update.setString(1, parametro.getValue());
+                    update.setString(2, parametro.getKey());
+                    update.executeUpdate();
+                }
+                conn.commit();
+            } catch (SQLException ex) {
+                conn.rollback();
+                throw ex;
+            } finally {
+                conn.setAutoCommit(autoCommitOriginal);
+            }
+        } catch (SQLException ex) {
+            throw new RuntimeException("Error al guardar la configuración: " + ex.getMessage(), ex);
+        }
+        syncSqliteBackup();
+    }
+
+    private void validarPorcentajeApartado(BigDecimal porcentaje) {
+        if (porcentaje == null || porcentaje.compareTo(new BigDecimal("0.01")) < 0 ||
+                porcentaje.compareTo(new BigDecimal("100")) > 0) {
+            throw new IllegalArgumentException("El porcentaje predeterminado debe estar entre 0.01 y 100.");
+        }
+    }
+
+    private void validarCostoTorneo(BigDecimal costo) {
+        if (costo == null || costo.compareTo(BigDecimal.ZERO) < 0 ||
+                costo.compareTo(new BigDecimal("99999999.99")) > 0) {
+            throw new IllegalArgumentException("El costo predeterminado del torneo debe estar entre 0 y 99,999,999.99.");
+        }
     }
 
     // =========================================================================

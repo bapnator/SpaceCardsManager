@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS preventa (
     monto_total DECIMAL(10,2) NOT NULL CHECK (monto_total >= monto_anticipo),
     fecha_solicitud DATETIME DEFAULT CURRENT_TIMESTAMP,
     fecha_estimada_entrega DATE NOT NULL,
+    fecha_vencimiento_apartado DATE NULL,
     estado VARCHAR(20) DEFAULT 'Pendiente' CHECK (estado IN ('Pendiente', 'Entregado', 'Cancelado')),
     FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente),
     FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario),
@@ -144,4 +145,9 @@ CREATE TABLE IF NOT EXISTS participante_torneo (
     FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo) ON DELETE CASCADE,
     FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente),
     CONSTRAINT unique_jugador_torneo UNIQUE (id_torneo, id_cliente) -- Evita doble inscripción
+);
+
+CREATE TABLE IF NOT EXISTS configuracion_sistema (
+    clave VARCHAR(100) PRIMARY KEY,
+    valor VARCHAR(255) NOT NULL
 );

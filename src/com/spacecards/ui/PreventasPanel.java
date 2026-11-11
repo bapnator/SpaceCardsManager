@@ -18,8 +18,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class PreventasPanel extends JPanel {
-    private static final int DIAS_MARGEN_LLEGADA = 7;
-
     private final DatabaseService db = DatabaseService.getInstance();
     private final JTextField txtBuscar = new JTextField();
     private final JComboBox<String> cmbEstado = new JComboBox<>(new String[]{"Todos los estados", "Pendiente", "Entregado", "Cancelado"});
@@ -97,7 +95,7 @@ public class PreventasPanel extends JPanel {
 
         // Tabla
         tableModel = new DefaultTableModel(new String[]{
-                "ID", "Cliente", "Producto Reservado", "Anticipo", "Total", "Saldo Pendiente", "Fecha Solicitud", "Llegada Estimada", "Estado"
+                "ID", "Cliente", "Producto Reservado", "Anticipo", "Total", "Saldo Pendiente", "Fecha Solicitud", "Llegada Estimada", "Vence Apartado", "Estado"
         }, 0) {
             @Override
             public boolean isCellEditable(int row, int col) { return false; }
@@ -137,7 +135,10 @@ public class PreventasPanel extends JPanel {
                         "$" + p.getSaldoPendiente(),
                         p.getFechaSolicitud().format(fmtDate),
                         p.getFechaEstimadaEntrega().format(fmtDate),
-                        p.getEstado()
+                        p.getFechaVencimientoApartado() != null ? p.getFechaVencimientoApartado().format(fmtDate) : "-",
+                        "Pendiente".equalsIgnoreCase(p.getEstado()) && p.getFechaVencimientoApartado() != null &&
+                                p.getFechaVencimientoApartado().isBefore(LocalDate.now())
+                                ? "Pendiente (vencida)" : p.getEstado()
                 });
             }
         }
@@ -170,6 +171,11 @@ public class PreventasPanel extends JPanel {
         JTextField txtAnticipo = new JTextField("0.00");
         txtAnticipo.setEditable(false);
         JLabel lblFechaEntrega = new JLabel("Selecciona un producto");
+        int diasMargenLlegada = db.getDiasMargenLlegada();
+        JLabel lblMargenLlegada = new JLabel("Llegada estimada (+" + diasMargenLlegada + " días):");
+        int diasVigenciaApartado = db.getDiasVigenciaApartado();
+        LocalDate fechaVencimientoApartado = LocalDate.now().plusDays(diasVigenciaApartado);
+        JLabel lblVencimientoApartado = new JLabel(fechaVencimientoApartado.format(fmtDate));
 
         Runnable actualizarAnticipo = () -> {
             try {
@@ -199,7 +205,7 @@ public class PreventasPanel extends JPanel {
             Producto selected = (Producto) cmbProd.getSelectedItem();
             if (selected != null) {
                 txtTotal.setText(selected.getPrecioUnitario().toString());
-                LocalDate fechaLlegada = calcularLlegadaEstimada(selected);
+                LocalDate fechaLlegada = calcularLlegadaEstimada(selected, diasMargenLlegada);
                 lblFechaEntrega.setText(fechaLlegada == null
                         ? "Registra una fecha del proveedor en el producto"
                         : formatearFechaEntrega(fechaLlegada));
@@ -239,9 +245,14 @@ public class PreventasPanel extends JPanel {
         form.add(txtAnticipo, gbc);
 
         gbc.gridx = 0; gbc.gridy = 5;
-        form.add(new JLabel("Llegada estimada (+ " + DIAS_MARGEN_LLEGADA + " días):"), gbc);
+        form.add(lblMargenLlegada, gbc);
         gbc.gridx = 1;
         form.add(lblFechaEntrega, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 6;
+        form.add(new JLabel("Vencimiento del apartado (" + diasVigenciaApartado + " días):"), gbc);
+        gbc.gridx = 1;
+        form.add(lblVencimientoApartado, gbc);
 
         dialog.add(form, BorderLayout.CENTER);
 
@@ -267,7 +278,7 @@ public class PreventasPanel extends JPanel {
                         "Validación", JOptionPane.WARNING_MESSAGE);
                 return;
             }
-            LocalDate fechaLlegada = calcularLlegadaEstimada(prod);
+            LocalDate fechaLlegada = calcularLlegadaEstimada(prod, diasMargenLlegada);
             if (fechaLlegada == null) {
                 JOptionPane.showMessageDialog(dialog,
                         "El producto no tiene registrada su fecha estimada del proveedor. Actualiza el producto antes de registrar la preventa.",
@@ -284,6 +295,7 @@ public class PreventasPanel extends JPanel {
             }
 
             Preventa nueva = new Preventa(0, cli, usr, prod, anticipo, total, fechaLlegada, "Pendiente");
+            nueva.setFechaVencimientoApartado(fechaVencimientoApartado);
             try {
                 db.addPreventa(nueva);
             } catch (RuntimeException ex) {
@@ -306,8 +318,8 @@ public class PreventasPanel extends JPanel {
         dialog.setVisible(true);
     }
 
-    private LocalDate calcularLlegadaEstimada(Producto producto) {
-        return producto.getFechaSalida() == null ? null : producto.getFechaSalida().plusDays(DIAS_MARGEN_LLEGADA);
+    private LocalDate calcularLlegadaEstimada(Producto producto, int diasMargenLlegada) {
+        return producto.getFechaSalida() == null ? null : producto.getFechaSalida().plusDays(diasMargenLlegada);
     }
 
     private String formatearFechaEntrega(LocalDate fecha) {

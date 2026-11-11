@@ -16,6 +16,7 @@ public class Preventa {
     private BigDecimal montoTotal;
     private LocalDateTime fechaSolicitud;
     private LocalDate fechaEstimadaEntrega;
+    private LocalDate fechaVencimientoApartado;
     private String estado; // 'Pendiente', 'Entregado', 'Cancelado'
 
     public Preventa() {
@@ -90,6 +91,11 @@ public class Preventa {
 
     public LocalDate getFechaEstimadaEntrega() { return fechaEstimadaEntrega; }
     public void setFechaEstimadaEntrega(LocalDate fechaEstimadaEntrega) { this.fechaEstimadaEntrega = fechaEstimadaEntrega; }
+
+    public LocalDate getFechaVencimientoApartado() { return fechaVencimientoApartado; }
+    public void setFechaVencimientoApartado(LocalDate fechaVencimientoApartado) {
+        this.fechaVencimientoApartado = fechaVencimientoApartado;
+    }
 
     public String getEstado() { return estado; }
     public void setEstado(String estado) { this.estado = estado; }

@@ -260,7 +260,8 @@ public class InventarioPanel extends JPanel {
 
         JTextField txtPrecio = new JTextField(isEdit ? p.getPrecioUnitario().toString() : "0.00");
         JSpinner spinPorcentajeApartado = new JSpinner(new SpinnerNumberModel(
-                isEdit ? p.getPorcentajeApartado().doubleValue() : 30.0, 0.01, 100.0, 1.0));
+                isEdit ? p.getPorcentajeApartado().doubleValue() : db.getPorcentajeApartadoPredeterminado().doubleValue(),
+                0.01, 100.0, 1.0));
         spinPorcentajeApartado.setEditor(new JSpinner.NumberEditor(spinPorcentajeApartado, "#0.##"));
         JTextField txtFechaSalida = new JTextField(isEdit && p.getFechaSalida() != null
             ? p.getFechaSalida().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) : "");

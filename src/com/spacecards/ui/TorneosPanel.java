@@ -241,8 +241,9 @@ public class TorneosPanel extends JPanel {
             for (Usuario u : db.getUsuarios()) cmbOrg.addItem(u);
         }
 
-        JTextField txtCosto = new JTextField("15.00");
-        JSpinner spinCupo = new JSpinner(new SpinnerNumberModel(16, 2, 128, 2));
+        JTextField txtCosto = new JTextField(db.getCostoTorneoPredeterminado().toPlainString());
+        JSpinner spinCupo = new JSpinner(new SpinnerNumberModel(
+                db.getCupoTorneoPredeterminado(), 2, Integer.MAX_VALUE, 2));
         LocalDate[] fechaEvento = {LocalDate.now().plusDays(7)};
         JLabel lblFechaEvento = new JLabel(fechaEvento[0].format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
         JButton btnFechaEvento = UITheme.createSecondaryButton("Elegir fecha...");
@@ -293,6 +294,12 @@ public class TorneosPanel extends JPanel {
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton btnGuardar = UITheme.createPrimaryButton("Registrar Torneo");
         btnGuardar.addActionListener(e -> {
+            try {
+                spinCupo.commitEdit();
+            } catch (java.text.ParseException ex) {
+                JOptionPane.showMessageDialog(dialog, "El cupo debe ser un número entero.", "Validación", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
             String nom = txtNombre.getText().trim();
             if (nom.isEmpty()) {
                 JOptionPane.showMessageDialog(dialog, "El nombre del torneo es obligatorio.", "Validación", JOptionPane.WARNING_MESSAGE);
@@ -318,6 +325,10 @@ public class TorneosPanel extends JPanel {
                 return;
             }
             int cupo = (int) spinCupo.getValue();
+            if (cupo < 2 || cupo % 2 != 0) {
+                JOptionPane.showMessageDialog(dialog, "El cupo máximo debe ser un número par mayor o igual a 2.", "Validación", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
 
             Torneo nuevo = new Torneo(0, org, nom, (String) cmbJuego.getSelectedItem(),
                     fechaEvento[0].atTime(16, 0), costo, cupo, "Programado");
