@@ -21,7 +21,7 @@ public class InventarioPanel extends JPanel {
         private final JComboBox<String> cmbCategoria = new JComboBox<>();
     private final JComboBox<String> cmbJuego = new JComboBox<>();
     private final JComboBox<String> cmbStock = new JComboBox<>(new String[]{
-            "Todos", "Con stock (> 0)", "Stock crítico (<= 5)", "Agotado (0)"
+                "Todos", "Con unidades (> 0)", "Unidades críticas (<= 5)", "Sin unidades (0)"
     });
     private boolean updatingJuegosFilter = false;
     private boolean updatingCategoriasFilter = false;
@@ -40,9 +40,9 @@ public class InventarioPanel extends JPanel {
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
 
-        JLabel lblTitle = new JLabel("Inventario TCG - Catálogo de Cartas & Productos");
+        JLabel lblTitle = new JLabel("Inventario de productos");
         lblTitle.setFont(UITheme.FONT_TITLE);
-        JLabel lblSub = new JLabel("Consulta, registra y actualiza productos coleccionables y sellados");
+        JLabel lblSub = new JLabel("Consulta y administra cartas, accesorios y productos sellados");
         lblSub.setFont(UITheme.FONT_REGULAR);
         lblSub.setForeground(UITheme.COLOR_TEXT_MUTED);
 
@@ -111,7 +111,7 @@ public class InventarioPanel extends JPanel {
 
         // Tabla
         tableModel = new DefaultTableModel(new String[]{
-            "ID", "Código Barras", "Nombre del Producto", "Categoría", "Juego TCG", "Precio Unit.", "Stock", "Modalidad", "Fecha de salida", "Estado"
+            "ID", "Código Barras", "Nombre del Producto", "Categoría", "Juego TCG", "Precio Unit.", "Disponibles / pedidas", "Modalidad", "Fecha de salida", "Estado"
         }, 0) {
             @Override
             public boolean isCellEditable(int row, int col) { return false; }
@@ -193,14 +193,14 @@ public class InventarioPanel extends JPanel {
                     (p.getDescripcion() != null && p.getDescripcion().toLowerCase().contains(query));
 
             boolean matchStock = true;
-            if (p.isPreventa()) matchStock = "Todos".equals(stockFilter);
-            else if ("Con stock (> 0)".equals(stockFilter)) matchStock = p.getStock() > 0;
-            else if ("Stock crítico (<= 5)".equals(stockFilter)) matchStock = p.getStock() > 0 && p.getStock() <= 5;
-            else if ("Agotado (0)".equals(stockFilter)) matchStock = p.getStock() == 0;
+            if ("Con unidades (> 0)".equals(stockFilter)) matchStock = p.getStock() > 0;
+            else if ("Unidades críticas (<= 5)".equals(stockFilter)) matchStock = p.getStock() > 0 && p.getStock() <= 5;
+            else if ("Sin unidades (0)".equals(stockFilter)) matchStock = p.getStock() == 0;
 
             if (matchCat && matchJuego && matchQuery && matchStock) {
                 filteredList.add(p);
-                String estadoStock = p.isPreventa() ? "No disponible para venta" :
+                String estadoStock = p.isPreventa()
+                        ? (p.getStock() == 0 ? "Sin unidades solicitadas" : "Unidades pedidas al proveedor") :
                         (p.getStock() == 0 ? "Agotado" : (p.getStock() <= 5 ? "Crítico" : "Disponible"));
                 tableModel.addRow(new Object[]{
                         p.getIdProducto(),
@@ -209,7 +209,7 @@ public class InventarioPanel extends JPanel {
                         Producto.getCategoriaVisible(p.getCategoria()),
                         p.getJuegoTcg(),
                         "$" + p.getPrecioUnitario(),
-                        p.isPreventa() ? "-" : p.getStock(),
+                        p.isPreventa() ? p.getStock() + " pedidas" : p.getStock(),
                         p.isPreventa() ? "Preventa" : "Venta normal",
                         p.getFechaSalida() != null ? p.getFechaSalida().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) : "-",
                         estadoStock
@@ -226,7 +226,7 @@ public class InventarioPanel extends JPanel {
         }
         boolean isEdit = (p != null);
         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this),
-                isEdit ? "Editar Producto" : "PantallaCrearRegistroProducto", true);
+                isEdit ? "Editar producto" : "Registrar producto", true);
         dialog.setSize(520, 610);
         dialog.setLocationRelativeTo(this);
         dialog.setLayout(new BorderLayout(12, 12));
@@ -274,38 +274,43 @@ public class InventarioPanel extends JPanel {
         JSpinner spinStock = new JSpinner(new SpinnerNumberModel(isEdit ? p.getStock() : 1, 0, 9999, 1));
         JComboBox<String> cmbTipoVenta = new JComboBox<>(new String[]{"Venta normal", "Preventa"});
         if (isEdit) cmbTipoVenta.setSelectedItem(p.isPreventa() ? "Preventa" : "Venta normal");
-        JLabel lblStock = new JLabel("Stock real:");
+        JLabel lblStock = new JLabel("Stock disponible:");
         JLabel lblFechaSalida = new JLabel("Fecha estimada del proveedor:");
         JLabel lblPorcentajeApartado = new JLabel("Porcentaje para apartado:");
         boolean esPreventaInicial = "Preventa".equals(cmbTipoVenta.getSelectedItem());
-        spinStock.setEnabled(!"Preventa".equals(cmbTipoVenta.getSelectedItem()));
+        final boolean[] previousPreventa = {esPreventaInicial};
+        spinStock.setEnabled(true);
+        lblStock.setText(esPreventaInicial ? "Unidades pedidas al proveedor:" : "Stock disponible:");
         txtFechaSalida.setEnabled(esPreventaInicial);
         btnElegirFechaSalida.setEnabled(esPreventaInicial);
         lblFechaSalida.setVisible(esPreventaInicial);
         fechaSalidaPanel.setVisible(esPreventaInicial);
         spinPorcentajeApartado.setVisible(esPreventaInicial);
         lblPorcentajeApartado.setVisible(esPreventaInicial);
-        if (!spinStock.isEnabled()) lblStock.setText("Stock real (no aplica):");
         cmbTipoVenta.addActionListener(e -> {
             boolean isPreventa = "Preventa".equals(cmbTipoVenta.getSelectedItem());
-            if (isPreventa && ((Number) spinStock.getValue()).intValue() > 0) {
-                int confirm = JOptionPane.showConfirmDialog(dialog,
-                        "Al cambiar a preventa se eliminará el stock real registrado. ¿Deseas continuar?",
+            int unidades = ((Number) spinStock.getValue()).intValue();
+            if (isPreventa != previousPreventa[0] && unidades > 0) {
+                String mensaje = isPreventa
+                        ? "La cantidad actual se registrará como unidades solicitadas al proveedor, no como stock disponible. Puedes ajustarla antes de guardar. ¿Deseas continuar?"
+                        : "La cantidad solicitada al proveedor no es inventario disponible. Se borrará para que registres el stock real. ¿Deseas continuar?";
+                int confirm = JOptionPane.showConfirmDialog(dialog, mensaje,
                         "Confirmar cambio", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
                 if (confirm != JOptionPane.YES_OPTION) {
-                    cmbTipoVenta.setSelectedItem("Venta normal");
+                    cmbTipoVenta.setSelectedItem(previousPreventa[0] ? "Preventa" : "Venta normal");
                     return;
                 }
-                spinStock.setValue(0);
+                if (!isPreventa) spinStock.setValue(0);
             }
-            spinStock.setEnabled(!isPreventa);
+            previousPreventa[0] = isPreventa;
+            spinStock.setEnabled(true);
             txtFechaSalida.setEnabled(isPreventa);
             btnElegirFechaSalida.setEnabled(isPreventa);
             lblFechaSalida.setVisible(isPreventa);
             fechaSalidaPanel.setVisible(isPreventa);
             spinPorcentajeApartado.setVisible(isPreventa);
             lblPorcentajeApartado.setVisible(isPreventa);
-            lblStock.setText(isPreventa ? "Stock real (no aplica):" : "Stock real:");
+            lblStock.setText(isPreventa ? "Unidades pedidas al proveedor:" : "Stock disponible:");
             form.revalidate();
             form.repaint();
         });
@@ -393,7 +398,7 @@ public class InventarioPanel extends JPanel {
             }
 
             boolean isPreventa = "Preventa".equals(cmbTipoVenta.getSelectedItem());
-            int stockVal = isPreventa ? 0 : (int) spinStock.getValue();
+            int stockVal = (int) spinStock.getValue();
             String tipoVenta = isPreventa ? Producto.TIPO_PREVENTA : Producto.TIPO_VENTA_NORMAL;
             java.time.LocalDate fechaSalida = null;
             if (isPreventa) {

@@ -39,7 +39,7 @@ public class SidebarPanel extends JPanel {
         lblLogo.setForeground(Color.WHITE);
         lblLogo.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JLabel lblSub = new JLabel("TCG Business Manager");
+        JLabel lblSub = new JLabel("Gestión de tienda especializada");
         lblSub.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         lblSub.setForeground(UITheme.COLOR_ACCENT);
         lblSub.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -56,14 +56,14 @@ public class SidebarPanel extends JPanel {
         navContainer.setOpaque(false);
         navContainer.setLayout(new GridLayout(0, 1, 0, 6));
 
-        addNavItem(navContainer, "Dashboard", "DASHBOARD", true);
+        addNavItem(navContainer, "Resumen", "DASHBOARD", true);
         addNavItem(navContainer, "Punto de Venta", "POS", false);
-        addNavItem(navContainer, "Inventario TCG", "INVENTARIO", false);
+        addNavItem(navContainer, "Productos", "INVENTARIO", false);
         addNavItem(navContainer, "Configuración", "CONFIGURACION", false);
         addNavItem(navContainer, "Clientes", "CLIENTES", false);
         addNavItem(navContainer, "Torneos", "TORNEOS", false);
-        addNavItem(navContainer, "Personal / Staff", "USUARIOS", false);
-        addNavItem(navContainer, "Base de Datos", "DATABASE", false);
+        addNavItem(navContainer, "Personal", "USUARIOS", false);
+        addNavItem(navContainer, "Gestión de información", "DATABASE", false);
 
         this.add(navContainer, BorderLayout.CENTER);
 

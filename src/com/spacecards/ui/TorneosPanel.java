@@ -41,9 +41,9 @@ public class TorneosPanel extends JPanel {
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
 
-        JLabel lblTitle = new JLabel("Torneos & Eventos Competitivos TCG");
+        JLabel lblTitle = new JLabel("Torneos y eventos");
         lblTitle.setFont(UITheme.FONT_TITLE);
-        JLabel lblSub = new JLabel("Organización de ligas, control de cupos y registro de jugadores");
+        JLabel lblSub = new JLabel("Organiza competencias, administra inscripciones y consulta resultados");
         lblSub.setFont(UITheme.FONT_REGULAR);
         lblSub.setForeground(UITheme.COLOR_TEXT_MUTED);
 
@@ -83,7 +83,7 @@ public class TorneosPanel extends JPanel {
         // Card Torneos
         JPanel cardTorneos = UITheme.createCardPanel();
         cardTorneos.setLayout(new BorderLayout(8, 8));
-        JLabel lblTorneosTitle = new JLabel("Torneos Registrados (PantallaConsultarTorneo)");
+        JLabel lblTorneosTitle = new JLabel("Torneos registrados");
         lblTorneosTitle.setFont(UITheme.FONT_SUBTITLE);
         cardTorneos.add(lblTorneosTitle, BorderLayout.NORTH);
 
@@ -367,7 +367,7 @@ public class TorneosPanel extends JPanel {
             return;
         }
 
-        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "PantallaCrearRegistroParticipante", true);
+        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Inscribir participante", true);
         dialog.setSize(440, 320);
         dialog.setLocationRelativeTo(this);
         dialog.setLayout(new BorderLayout(12, 12));

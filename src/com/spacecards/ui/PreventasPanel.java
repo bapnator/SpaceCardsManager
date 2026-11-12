@@ -36,9 +36,9 @@ public class PreventasPanel extends JPanel {
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
 
-        JLabel lblTitle = new JLabel("Control de Preventas & Anticipos");
+        JLabel lblTitle = new JLabel("Pedidos anticipados");
         lblTitle.setFont(UITheme.FONT_TITLE);
-        JLabel lblSub = new JLabel("Gestión de pedidos anticipados de cartas y cajas con depósito inicial");
+        JLabel lblSub = new JLabel("Administra apartados, anticipos y fechas de entrega");
         lblSub.setFont(UITheme.FONT_REGULAR);
         lblSub.setForeground(UITheme.COLOR_TEXT_MUTED);
 
@@ -145,7 +145,7 @@ public class PreventasPanel extends JPanel {
     }
 
     private void showPreventaDialog() {
-        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "PantallaCrearRegistroPreventa", true);
+        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Registrar pedido anticipado", true);
         dialog.setSize(520, 440);
         dialog.setLocationRelativeTo(this);
         dialog.setLayout(new BorderLayout(12, 12));

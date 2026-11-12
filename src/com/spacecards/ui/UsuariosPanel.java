@@ -28,9 +28,9 @@ public class UsuariosPanel extends JPanel {
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
 
-        JLabel lblTitle = new JLabel("Personal y Usuarios del Sistema");
+        JLabel lblTitle = new JLabel("Personal de la tienda");
         lblTitle.setFont(UITheme.FONT_TITLE);
-        JLabel lblSub = new JLabel("Gestión de administradores, vendedores y organizadores de torneos");
+        JLabel lblSub = new JLabel("Administra las cuentas y funciones del equipo");
         lblSub.setFont(UITheme.FONT_REGULAR);
         lblSub.setForeground(UITheme.COLOR_TEXT_MUTED);
 
@@ -132,7 +132,7 @@ public class UsuariosPanel extends JPanel {
     private void showUsuarioDialog(Usuario u) {
         boolean isEdit = (u != null);
         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this),
-                isEdit ? "Editar Usuario" : "PantallaCrearRegistroUsuario", true);
+                isEdit ? "Editar usuario" : "Registrar usuario", true);
         dialog.setSize(440, 380);
         dialog.setLocationRelativeTo(this);
         dialog.setLayout(new BorderLayout(12, 12));

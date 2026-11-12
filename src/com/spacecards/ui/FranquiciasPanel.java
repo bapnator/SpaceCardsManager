@@ -43,7 +43,7 @@ public class FranquiciasPanel extends JPanel {
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
 
-        JLabel lblTitle = new JLabel("Franquicias TCG Jugables");
+        JLabel lblTitle = new JLabel("Juegos y colecciones disponibles");
         lblTitle.setFont(UITheme.FONT_TITLE);
         JLabel lblSub = new JLabel("Gestión de juegos de cartas coleccionables disponibles en la tienda (Pokémon, Magic, Lorcana, etc.)");
         lblSub.setFont(UITheme.FONT_REGULAR);

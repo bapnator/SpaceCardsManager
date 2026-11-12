@@ -29,7 +29,7 @@ public class ClientesPanel extends JPanel {
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
 
-        JLabel lblTitle = new JLabel("Directorio de Clientes");
+        JLabel lblTitle = new JLabel("Clientes");
         lblTitle.setFont(UITheme.FONT_TITLE);
         JLabel lblSub = new JLabel("Consulta y registro de clientes para compras, preventas y torneos");
         lblSub.setFont(UITheme.FONT_REGULAR);
@@ -121,7 +121,7 @@ public class ClientesPanel extends JPanel {
     private void showClienteDialog(Cliente c) {
         boolean isEdit = (c != null);
         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this),
-                isEdit ? "Editar Cliente" : "PantallaCrearRegistroCliente", true);
+                isEdit ? "Editar cliente" : "Registrar cliente", true);
         dialog.setSize(420, 360);
         dialog.setLocationRelativeTo(this);
         dialog.setLayout(new BorderLayout(12, 12));

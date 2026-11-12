@@ -22,7 +22,7 @@ public class ConfiguracionPanel extends JPanel {
         setLayout(new BorderLayout(12, 12));
         setBorder(new EmptyBorder(20, 20, 16, 20));
 
-        JLabel title = new JLabel("Configuración");
+        JLabel title = new JLabel("Configuración de la tienda");
         title.setFont(UITheme.FONT_TITLE);
         JLabel subtitle = new JLabel("Administra catálogos y parámetros operativos de la tienda");
         subtitle.setFont(UITheme.FONT_REGULAR);
@@ -41,9 +41,9 @@ public class ConfiguracionPanel extends JPanel {
         JPanel parametrosPanel = crearParametrosPanel(onDataChanged);
 
         JTabbedPane tabs = new JTabbedPane();
-        tabs.addTab("Franquicias TCG", franquiciasPanel);
-        tabs.addTab("Categorías de inventario", categoriasPanel);
-        tabs.addTab("Parámetros", parametrosPanel);
+        tabs.addTab("Juegos y colecciones", franquiciasPanel);
+        tabs.addTab("Categorías de productos", categoriasPanel);
+        tabs.addTab("Preferencias de operación", parametrosPanel);
         add(tabs, BorderLayout.CENTER);
         cargarParametros();
     }
@@ -58,7 +58,7 @@ public class ConfiguracionPanel extends JPanel {
         JPanel panel = UITheme.createCardPanel();
         panel.setLayout(new BorderLayout(12, 12));
 
-        JLabel titulo = new JLabel("Parámetros operativos");
+        JLabel titulo = new JLabel("Preferencias de operación");
         titulo.setFont(UITheme.FONT_SUBTITLE);
         JLabel descripcion = new JLabel("<html>Ajusta los valores iniciales y reglas operativas. Cada producto o torneo nuevo puede conservar sus propios valores.</html>");
         descripcion.setFont(UITheme.FONT_REGULAR);

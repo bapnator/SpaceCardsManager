@@ -22,7 +22,7 @@ public class MainWindow extends JFrame {
     private DatabasePanel databasePanel;
 
     public MainWindow() {
-        setTitle("Space Cards Manager - TCG Store [MariaDB + Tailscale]");
+        setTitle("Space Cards Manager");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1240, 800);
         setMinimumSize(new Dimension(1050, 680));

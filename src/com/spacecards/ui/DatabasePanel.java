@@ -45,9 +45,9 @@ public class DatabasePanel extends JPanel {
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
 
-        JLabel lblTitle = new JLabel("Gestión de Base de Datos SQLite (spacecards.db)");
+        JLabel lblTitle = new JLabel("Gestión de información");
         lblTitle.setFont(UITheme.FONT_TITLE);
-        JLabel lblSub = new JLabel("Persistencia local embebida con SQLite 3 y soporte de consultas interactivas");
+        JLabel lblSub = new JLabel("Consulta el estado y gestiona la información de la tienda");
         lblSub.setFont(UITheme.FONT_REGULAR);
         lblSub.setForeground(UITheme.COLOR_TEXT_MUTED);
 
@@ -117,7 +117,7 @@ public class DatabasePanel extends JPanel {
         JPanel consoleHeader = new JPanel(new BorderLayout(8, 8));
         consoleHeader.setOpaque(false);
 
-        JLabel lblConsoleTitle = new JLabel("Consola de Consultas SQL Directa");
+        JLabel lblConsoleTitle = new JLabel("Consulta avanzada de datos");
         lblConsoleTitle.setFont(UITheme.FONT_SUBTITLE);
         consoleHeader.add(lblConsoleTitle, BorderLayout.WEST);
         consoleHeader.add(cmbQuickQueries, BorderLayout.EAST);

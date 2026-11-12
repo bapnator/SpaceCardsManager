@@ -55,9 +55,9 @@ public class VentasPanel extends JPanel {
         // Header
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
-        JLabel lblTitle = new JLabel("Punto de Venta (POS) - Registrar Venta");
+        JLabel lblTitle = new JLabel("Punto de venta");
         lblTitle.setFont(UITheme.FONT_TITLE);
-        JLabel lblSub = new JLabel("Selecciona cartas, sobres o accesorios y genera el ticket de venta");
+        JLabel lblSub = new JLabel("Registra las compras y prepara el comprobante de tus clientes");
         lblSub.setFont(UITheme.FONT_REGULAR);
         lblSub.setForeground(UITheme.COLOR_TEXT_MUTED);
 
@@ -126,7 +126,7 @@ public class VentasPanel extends JPanel {
         JPanel panelCheckout = UITheme.createCardPanel();
         panelCheckout.setLayout(new BorderLayout(10, 10));
 
-        JLabel lblCartTitle = new JLabel("Carrito de Compras");
+        JLabel lblCartTitle = new JLabel("Carrito de compra");
         lblCartTitle.setFont(UITheme.FONT_SUBTITLE);
         panelCheckout.add(lblCartTitle, BorderLayout.NORTH);
 

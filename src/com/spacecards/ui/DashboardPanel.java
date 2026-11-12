@@ -13,7 +13,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class DashboardPanel extends JPanel {
     private final DatabaseService db = DatabaseService.getInstance();
@@ -22,6 +25,8 @@ public class DashboardPanel extends JPanel {
     private final JLabel lblPreventasCount = new JLabel("0 activas");
     private final JLabel lblAnticiposPreventas = new JLabel("$0.00");
     private final JLabel lblTorneosCount = new JLabel("0 eventos");
+    private final JPanel cardAlertasPreventa = UITheme.createCardPanel();
+    private final JTextArea txtAlertasPreventa = new JTextArea();
 
     private final DefaultTableModel ventasModel;
     private final JTable tableVentas;
@@ -37,10 +42,10 @@ public class DashboardPanel extends JPanel {
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
 
-        JLabel lblTitle = new JLabel("Panel de Control General");
+        JLabel lblTitle = new JLabel("Resumen de la tienda");
         lblTitle.setFont(UITheme.FONT_TITLE);
 
-        JLabel lblSub = new JLabel("Resumen de operaciones multijuego TCG y tienda especializada");
+        JLabel lblSub = new JLabel("Indicadores y actividad reciente de tu tienda especializada");
         lblSub.setFont(UITheme.FONT_REGULAR);
         lblSub.setForeground(UITheme.COLOR_TEXT_MUTED);
 
@@ -80,7 +85,31 @@ public class DashboardPanel extends JPanel {
         statsGrid.add(createKpiCard("Anticipos Recaudados", lblAnticiposPreventas, UITheme.COLOR_SUCCESS));
         statsGrid.add(createKpiCard("Torneos Programados", lblTorneosCount, new Color(168, 85, 247)));
 
-        centerPanel.add(statsGrid, BorderLayout.NORTH);
+        cardAlertasPreventa.setLayout(new BorderLayout(8, 8));
+        JLabel lblAlertasTitle = new JLabel("Unidades faltantes para pedidos anticipados");
+        lblAlertasTitle.setFont(UITheme.FONT_SUBTITLE);
+        lblAlertasTitle.setForeground(UITheme.COLOR_ACCENT);
+        txtAlertasPreventa.setEditable(false);
+        txtAlertasPreventa.setLineWrap(true);
+        txtAlertasPreventa.setWrapStyleWord(true);
+        txtAlertasPreventa.setFont(UITheme.FONT_REGULAR);
+        txtAlertasPreventa.setForeground(UITheme.COLOR_TEXT_MUTED);
+        txtAlertasPreventa.setOpaque(false);
+        txtAlertasPreventa.setBorder(null);
+        JScrollPane alertasScroll = new JScrollPane(txtAlertasPreventa);
+        alertasScroll.setBorder(null);
+        alertasScroll.setOpaque(false);
+        alertasScroll.getViewport().setOpaque(false);
+        alertasScroll.setPreferredSize(new Dimension(0, 68));
+        cardAlertasPreventa.add(lblAlertasTitle, BorderLayout.NORTH);
+        cardAlertasPreventa.add(alertasScroll, BorderLayout.CENTER);
+        cardAlertasPreventa.setVisible(false);
+
+        JPanel resumenSuperior = new JPanel(new BorderLayout(0, 12));
+        resumenSuperior.setOpaque(false);
+        resumenSuperior.add(statsGrid, BorderLayout.NORTH);
+        resumenSuperior.add(cardAlertasPreventa, BorderLayout.CENTER);
+        centerPanel.add(resumenSuperior, BorderLayout.NORTH);
 
         // Split view with 2 preview tables
         JPanel tablesPanel = new JPanel(new GridLayout(1, 2, 16, 0));
@@ -92,7 +121,7 @@ public class DashboardPanel extends JPanel {
 
         JPanel ventasHeader = new JPanel(new BorderLayout());
         ventasHeader.setOpaque(false);
-        JLabel lblVentasTitle = new JLabel("Ventas Recientes");
+        JLabel lblVentasTitle = new JLabel("Ventas recientes");
         lblVentasTitle.setFont(UITheme.FONT_SUBTITLE);
         ventasHeader.add(lblVentasTitle, BorderLayout.WEST);
 
@@ -119,7 +148,7 @@ public class DashboardPanel extends JPanel {
         // Torneos Activos Card
         JPanel cardTorneos = UITheme.createCardPanel();
         cardTorneos.setLayout(new BorderLayout(8, 8));
-        JLabel lblTorneosTitle = new JLabel("Próximos Torneos & Eventos");
+        JLabel lblTorneosTitle = new JLabel("Próximos torneos y eventos");
         lblTorneosTitle.setFont(UITheme.FONT_SUBTITLE);
         cardTorneos.add(lblTorneosTitle, BorderLayout.NORTH);
 
@@ -168,7 +197,7 @@ public class DashboardPanel extends JPanel {
         int totalUnits = 0;
         List<Producto> listaProds = db.getProductos();
         for (Producto p : listaProds) {
-            totalUnits += p.getStock();
+            if (!p.isPreventa()) totalUnits += p.getStock();
         }
         lblStockTotal.setText(listaProds.size() + " ítems (" + totalUnits + " u.)");
 
@@ -176,14 +205,32 @@ public class DashboardPanel extends JPanel {
         List<com.spacecards.model.Preventa> preventas = db.getPreventas();
         long preventasPendientes = 0;
         BigDecimal anticiposPendientes = BigDecimal.ZERO;
+        Map<Integer, Integer> pedidosPendientesPorProducto = new HashMap<>();
         for (com.spacecards.model.Preventa preventa : preventas) {
             if ("Pendiente".equalsIgnoreCase(preventa.getEstado())) {
                 preventasPendientes++;
                 anticiposPendientes = anticiposPendientes.add(preventa.getMontoAnticipo());
+                Integer cantidad = pedidosPendientesPorProducto.get(preventa.getIdProducto());
+                pedidosPendientesPorProducto.put(preventa.getIdProducto(), cantidad == null ? 1 : cantidad + 1);
             }
         }
         lblPreventasCount.setText(preventasPendientes + " pendientes");
         lblAnticiposPreventas.setText("$" + anticiposPendientes);
+
+        List<String> alertasPreventa = new ArrayList<>();
+        for (Producto producto : listaProds) {
+            if (!producto.isPreventa()) continue;
+            Integer pedidos = pedidosPendientesPorProducto.get(producto.getIdProducto());
+            int pedidosPendientesProducto = pedidos == null ? 0 : pedidos;
+            if (pedidosPendientesProducto > producto.getStock()) {
+                int faltantes = pedidosPendientesProducto - producto.getStock();
+                alertasPreventa.add(producto.getNombre() + ": " + pedidosPendientesProducto
+                        + " pedidos pendientes, " + producto.getStock() + " unidades solicitadas al proveedor. "
+                        + "Faltan " + faltantes + "; actualiza el pedido o solicita más unidades.");
+            }
+        }
+        txtAlertasPreventa.setText(String.join("\n", alertasPreventa));
+        cardAlertasPreventa.setVisible(!alertasPreventa.isEmpty());
 
         // Torneos
         long torneosActivos = db.getTorneos().stream()
@@ -218,6 +265,7 @@ public class DashboardPanel extends JPanel {
                     t.getEstado()
             });
         }
+        revalidate();
     }
 
     private void showDetalleVentaDialog() {
