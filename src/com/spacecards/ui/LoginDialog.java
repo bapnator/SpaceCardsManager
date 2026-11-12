@@ -116,6 +116,18 @@ public class LoginDialog extends JDialog {
         cmbUsuarios.setFont(UITheme.FONT_REGULAR);
         centerPanel.add(cmbUsuarios);
 
+        JPasswordField txtPassword = new JPasswordField();
+        txtPassword.setColumns(20);
+        txtPassword.setEchoChar('*');
+        txtPassword.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
+        JLabel lblPassword = new JLabel("Contraseña:");
+        lblPassword.setFont(UITheme.FONT_BOLD);
+        lblPassword.setForeground(Color.WHITE);
+        centerPanel.add(Box.createVerticalStrut(12));
+        centerPanel.add(lblPassword);
+        centerPanel.add(Box.createVerticalStrut(6));
+        centerPanel.add(txtPassword);
+
         root.add(centerPanel, BorderLayout.CENTER);
 
         // Footer buttons
@@ -132,6 +144,14 @@ public class LoginDialog extends JDialog {
 
         JButton btnComenzar = UITheme.createPrimaryButton("Comenzar Configuración");
         btnComenzar.addActionListener(e -> {
+            String password = new String(txtPassword.getPassword()).trim();
+            if (!DatabaseService.ASH_BRIDGE_USER.isPasswordValid(password)) {
+                JOptionPane.showMessageDialog(this,
+                        "La contraseña del usuario puente es incorrecta.",
+                        "Acceso denegado",
+                        JOptionPane.ERROR_MESSAGE);
+                return;
+            }
             selectedUser = DatabaseService.ASH_BRIDGE_USER;
             dispose();
         });
@@ -200,6 +220,18 @@ public class LoginDialog extends JDialog {
         cmbUsuarios.setFont(UITheme.FONT_REGULAR);
         centerPanel.add(cmbUsuarios);
 
+        JPasswordField txtPassword = new JPasswordField();
+        txtPassword.setColumns(20);
+        txtPassword.setEchoChar('*');
+        txtPassword.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
+        JLabel lblPassword = new JLabel("Contraseña:");
+        lblPassword.setFont(UITheme.FONT_BOLD);
+        lblPassword.setForeground(Color.WHITE);
+        centerPanel.add(Box.createVerticalStrut(12));
+        centerPanel.add(lblPassword);
+        centerPanel.add(Box.createVerticalStrut(6));
+        centerPanel.add(txtPassword);
+
         root.add(centerPanel, BorderLayout.CENTER);
 
         // Footer
@@ -218,7 +250,21 @@ public class LoginDialog extends JDialog {
         btnEntrar.addActionListener(e -> {
             Object item = cmbUsuarios.getSelectedItem();
             if (item instanceof Usuario) {
-                selectedUser = (Usuario) item;
+                Usuario usuario = (Usuario) item;
+                String password = new String(txtPassword.getPassword()).trim();
+                if (!db.authenticateUsuario(usuario, password)) {
+                    JOptionPane.showMessageDialog(this,
+                            "La contraseña es incorrecta para el usuario seleccionado.",
+                            "Acceso denegado",
+                            JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+                if (usuario.isPasswordChangeRequired()
+                        && !showRequiredPasswordChangeDialog(usuario, password)) {
+                    txtPassword.setText("");
+                    return;
+                }
+                selectedUser = usuario;
                 dispose();
             } else {
                 JOptionPane.showMessageDialog(this, "Por favor selecciona un usuario válido.", "Aviso", JOptionPane.WARNING_MESSAGE);
@@ -230,6 +276,89 @@ public class LoginDialog extends JDialog {
         root.add(btnPanel, BorderLayout.SOUTH);
 
         setContentPane(root);
+    }
+
+    private boolean showRequiredPasswordChangeDialog(Usuario usuario, String temporaryPassword) {
+        JDialog dialog = new JDialog(this, "Crea tu nueva contraseña", true);
+        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        dialog.setSize(440, 250);
+        dialog.setLocationRelativeTo(this);
+        dialog.setLayout(new BorderLayout(12, 12));
+
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setBorder(new EmptyBorder(16, 16, 16, 16));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(8, 8, 8, 8);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        JLabel message = new JLabel("<html>El administrador restableció tu contraseña.<br>"
+                + "Antes de continuar, define una contraseña nueva.</html>");
+        JPasswordField txtNew = new JPasswordField();
+        JPasswordField txtConfirm = new JPasswordField();
+
+        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
+        form.add(message, gbc);
+        gbc.gridwidth = 1;
+        gbc.gridy = 1; gbc.weightx = 0.35;
+        form.add(new JLabel("Nueva contraseña:"), gbc);
+        gbc.gridx = 1; gbc.weightx = 0.65;
+        form.add(txtNew, gbc);
+        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.35;
+        form.add(new JLabel("Confirmar contraseña:"), gbc);
+        gbc.gridx = 1; gbc.weightx = 0.65;
+        form.add(txtConfirm, gbc);
+        dialog.add(form, BorderLayout.CENTER);
+
+        boolean[] changed = {false};
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton save = UITheme.createPrimaryButton("Guardar y continuar");
+        save.addActionListener(e -> {
+            String newPassword = new String(txtNew.getPassword()).trim();
+            String confirmation = new String(txtConfirm.getPassword()).trim();
+            if (newPassword.isEmpty() || confirmation.isEmpty()) {
+                JOptionPane.showMessageDialog(dialog, "Completa ambos campos.", "Validación", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            if (!newPassword.equals(confirmation)) {
+                JOptionPane.showMessageDialog(dialog, "Las contraseñas no coinciden.", "Validación", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            if (newPassword.equals(temporaryPassword)) {
+                JOptionPane.showMessageDialog(dialog, "La contraseña nueva debe ser distinta de la temporal.", "Validación", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            String warning = Usuario.getPasswordStrengthWarning(newPassword);
+            if (!warning.isEmpty()) {
+                JOptionPane.showMessageDialog(dialog,
+                        warning + "\n\nPuedes continuar con esta contraseña si así lo decides.",
+                        "Aviso de seguridad",
+                        JOptionPane.WARNING_MESSAGE);
+            }
+
+            try {
+                if (db.setPasswordForUser(usuario.getIdUsuario(), newPassword)) {
+                    usuario.setPassword(newPassword);
+                    usuario.setPasswordChangeRequired(false);
+                    changed[0] = true;
+                    dialog.dispose();
+                } else {
+                    JOptionPane.showMessageDialog(dialog, "No se encontró el usuario para actualizar la contraseña.", "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            } catch (RuntimeException ex) {
+                JOptionPane.showMessageDialog(dialog,
+                        "No se pudo actualizar la contraseña: " + ex.getMessage(),
+                        "Error",
+                        JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        JButton cancel = UITheme.createSecondaryButton("Cancelar");
+        cancel.addActionListener(e -> dialog.dispose());
+        buttons.add(cancel);
+        buttons.add(save);
+        dialog.add(buttons, BorderLayout.SOUTH);
+        dialog.setVisible(true);
+        return changed[0];
     }
 
     public Usuario getSelectedUser() {

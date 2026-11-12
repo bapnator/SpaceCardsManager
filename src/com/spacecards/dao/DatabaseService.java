@@ -4,6 +4,7 @@ import com.spacecards.model.*;
 
 import java.io.File;
 import java.math.BigDecimal;
+import java.security.MessageDigest;
 import java.sql.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -85,7 +86,7 @@ public class DatabaseService {
     private static final String DEFAULT_DB_FILE = "spacecards.db";
         private static final String[][] SQLITE_BACKUP_TABLES = {
             {"cliente", "id_cliente", "nombre", "apellido", "correo_electronico", "telefono", "fecha_registro"},
-            {"usuario", "id_usuario", "nombre", "apellido", "rol", "horario", "activo"},
+            {"usuario", "id_usuario", "nombre", "apellido", "rol", "horario", "activo", "password_hash", "must_change_password"},
             {"producto", "id_producto", "codigo_barras", "nombre", "descripcion", "categoria", "juego_tcg", "precio_unitario", "porcentaje_apartado", "stock", "id_torneo", "tipo_venta", "fecha_salida"},
             {"categoria_producto", "id_categoria", "nombre", "descripcion", "activo", "fecha_registro"},
             {"franquicia", "id_franquicia", "nombre", "fabricante", "descripcion", "activo", "fecha_registro"},
@@ -430,6 +431,79 @@ public class DatabaseService {
         }
     }
 
+    public static String hashPassword(String rawPassword) {
+        if (rawPassword == null) {
+            return "";
+        }
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(rawPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : hash) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (Exception ex) {
+            throw new RuntimeException("Error al generar hash de contraseña", ex);
+        }
+    }
+
+    public synchronized boolean authenticateUsuario(Usuario usuario, String password) {
+        if (usuario == null || password == null || password.trim().isEmpty()) {
+            return false;
+        }
+        return usuario.isPasswordValid(password);
+    }
+
+    public synchronized String resetPasswordForUser(int idUsuario) {
+        String nombre;
+        try (PreparedStatement ps = getConnection().prepareStatement(
+                "SELECT nombre FROM usuario WHERE id_usuario = ?")) {
+            ps.setInt(1, idUsuario);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new RuntimeException("No se encontró el usuario que se desea restablecer.");
+                }
+                nombre = rs.getString("nombre");
+            }
+        } catch (SQLException ex) {
+            throw new RuntimeException("Error al consultar el usuario: " + ex.getMessage(), ex);
+        }
+
+        String temporaryPassword = Usuario.generateTemporaryPassword(nombre);
+        String sql = "UPDATE usuario SET password_hash = ?, must_change_password = 1 WHERE id_usuario = ?";
+        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            ps.setString(1, hashPassword(temporaryPassword));
+            ps.setInt(2, idUsuario);
+            if (ps.executeUpdate() == 0) {
+                throw new RuntimeException("No se encontró el usuario que se desea restablecer.");
+            }
+        } catch (SQLException ex) {
+            throw new RuntimeException("Error al restablecer contraseña: " + ex.getMessage(), ex);
+        }
+        syncSqliteBackup();
+        return temporaryPassword;
+    }
+
+    public synchronized boolean setPasswordForUser(int idUsuario, String newPassword) {
+        if (idUsuario <= 0 || newPassword == null || newPassword.trim().isEmpty()) {
+            return false;
+        }
+        String sql = "UPDATE usuario SET password_hash = ?, must_change_password = 0 WHERE id_usuario = ?";
+        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            ps.setString(1, hashPassword(newPassword.trim()));
+            ps.setInt(2, idUsuario);
+            int updated = ps.executeUpdate();
+            if (updated > 0) {
+                syncSqliteBackup();
+                return true;
+            }
+        } catch (SQLException ex) {
+            throw new RuntimeException("Error al cambiar contraseña: " + ex.getMessage(), ex);
+        }
+        return false;
+    }
+
     private void createTablesIfNotExist() throws SQLException {
         createTablesIfNotExist(getConnection(), dbType);
     }
@@ -453,7 +527,9 @@ public class DatabaseService {
                         "apellido VARCHAR(50) NOT NULL," +
                         "rol VARCHAR(30) NOT NULL CHECK (rol IN ('Administrador', 'Vendedor', 'Organizador_Torneos'))," +
                         "horario VARCHAR(50) NOT NULL," +
-                        "activo BOOLEAN DEFAULT 1) ENGINE=InnoDB;");
+                        "activo BOOLEAN DEFAULT 1," +
+                        "password_hash VARCHAR(255) NOT NULL DEFAULT ''," +
+                        "must_change_password BOOLEAN NOT NULL DEFAULT 0) ENGINE=InnoDB;");
 
                 // TABLA: PRODUCTO (MariaDB)
                 st.execute("CREATE TABLE IF NOT EXISTS producto (" +
@@ -571,7 +647,9 @@ public class DatabaseService {
                         "apellido VARCHAR(50) NOT NULL," +
                         "rol VARCHAR(30) NOT NULL CHECK (rol IN ('Administrador', 'Vendedor', 'Organizador_Torneos'))," +
                         "horario VARCHAR(50) NOT NULL," +
-                        "activo BOOLEAN DEFAULT 1);");
+                        "activo BOOLEAN DEFAULT 1," +
+                        "password_hash VARCHAR(255) NOT NULL DEFAULT ''," +
+                        "must_change_password BOOLEAN NOT NULL DEFAULT 0);");
 
                 // TABLA: PRODUCTO (SQLite)
                 st.execute("CREATE TABLE IF NOT EXISTS producto (" +
@@ -681,7 +759,35 @@ public class DatabaseService {
         ensureParticipantPrizeColumn(targetConnection);
         ensurePreventaSaleColumn(targetConnection);
         ensurePreventaExpirationColumn(targetConnection);
+        ensureUsuarioPasswordColumn(targetConnection);
+        ensureUsuarioMustChangePasswordColumn(targetConnection);
         ensureDefaultProductCategories(targetConnection);
+    }
+
+    private void ensureUsuarioPasswordColumn(Connection targetConnection) throws SQLException {
+        try (Statement st = targetConnection.createStatement()) {
+            st.executeQuery("SELECT password_hash FROM usuario LIMIT 0").close();
+        } catch (SQLException missingColumn) {
+            try (Statement st = targetConnection.createStatement()) {
+                st.executeUpdate("ALTER TABLE usuario ADD COLUMN password_hash VARCHAR(255) NOT NULL DEFAULT ''");
+            }
+        }
+
+        try (PreparedStatement ps = targetConnection.prepareStatement(
+                "UPDATE usuario SET password_hash = ? WHERE password_hash IS NULL OR TRIM(password_hash) = ''")) {
+            ps.setString(1, hashPassword(Usuario.DEFAULT_PASSWORD));
+            ps.executeUpdate();
+        }
+    }
+
+    private void ensureUsuarioMustChangePasswordColumn(Connection targetConnection) throws SQLException {
+        try (Statement st = targetConnection.createStatement()) {
+            st.executeQuery("SELECT must_change_password FROM usuario LIMIT 0").close();
+        } catch (SQLException missingColumn) {
+            try (Statement st = targetConnection.createStatement()) {
+                st.executeUpdate("ALTER TABLE usuario ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT 0");
+            }
+        }
     }
 
     private void ensurePreventaSaleColumn(Connection targetConnection) throws SQLException {
@@ -1032,7 +1138,7 @@ public class DatabaseService {
 
     public synchronized List<Usuario> getUsuarios() {
         List<Usuario> list = new ArrayList<>();
-        String sql = "SELECT id_usuario, nombre, apellido, rol, horario, activo FROM usuario ORDER BY id_usuario ASC";
+        String sql = "SELECT id_usuario, nombre, apellido, rol, horario, activo, password_hash, must_change_password FROM usuario ORDER BY id_usuario ASC";
         try (Statement st = getConnection().createStatement();
              ResultSet rs = st.executeQuery(sql)) {
             while (rs.next()) {
@@ -1043,6 +1149,8 @@ public class DatabaseService {
                 u.setRol(rs.getString("rol"));
                 u.setHorario(rs.getString("horario"));
                 u.setActivo(rs.getInt("activo") != 0);
+                u.setPasswordHash(rs.getString("password_hash"));
+                u.setPasswordChangeRequired(rs.getInt("must_change_password") != 0);
                 list.add(u);
             }
         } catch (SQLException ex) {
@@ -1052,13 +1160,14 @@ public class DatabaseService {
     }
 
     public synchronized void addUsuario(Usuario u) {
-        String sql = "INSERT INTO usuario (nombre, apellido, rol, horario, activo) VALUES (?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO usuario (nombre, apellido, rol, horario, activo, password_hash) VALUES (?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = getConnection().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, u.getNombre());
             ps.setString(2, u.getApellido());
             ps.setString(3, u.getRol());
             ps.setString(4, u.getHorario());
             ps.setInt(5, u.isActivo() ? 1 : 0);
+            ps.setString(6, u.getPasswordHash() == null || u.getPasswordHash().isBlank() ? hashPassword(Usuario.DEFAULT_PASSWORD) : u.getPasswordHash());
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (keys.next()) {
@@ -1072,14 +1181,15 @@ public class DatabaseService {
     }
 
     public synchronized void updateUsuario(Usuario u) {
-        String sql = "UPDATE usuario SET nombre = ?, apellido = ?, rol = ?, horario = ?, activo = ? WHERE id_usuario = ?";
+        String sql = "UPDATE usuario SET nombre = ?, apellido = ?, rol = ?, horario = ?, activo = ?, password_hash = ? WHERE id_usuario = ?";
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
             ps.setString(1, u.getNombre());
             ps.setString(2, u.getApellido());
             ps.setString(3, u.getRol());
             ps.setString(4, u.getHorario());
             ps.setInt(5, u.isActivo() ? 1 : 0);
-            ps.setInt(6, u.getIdUsuario());
+            ps.setString(6, u.getPasswordHash() == null || u.getPasswordHash().isBlank() ? hashPassword(Usuario.DEFAULT_PASSWORD) : u.getPasswordHash());
+            ps.setInt(7, u.getIdUsuario());
             ps.executeUpdate();
         } catch (SQLException ex) {
             throw new RuntimeException("Error al actualizar usuario: " + ex.getMessage(), ex);
@@ -1102,6 +1212,10 @@ public class DatabaseService {
             -1, "Ash", "Ketchum", "Usuario Puente", "Turno Especial (Configuración Inicial)", true
     );
 
+    static {
+        ASH_BRIDGE_USER.setPassword(Usuario.ASH_BRIDGE_PASSWORD);
+    }
+
     public synchronized boolean hasActiveAdministrator() {
         String sql = "SELECT COUNT(*) FROM usuario WHERE rol = 'Administrador' AND activo = 1";
         try (Statement st = getConnection().createStatement();
@@ -1116,7 +1230,7 @@ public class DatabaseService {
     }
 
     public synchronized Usuario findUsuarioById(int idUsuario) {
-        String sql = "SELECT id_usuario, nombre, apellido, rol, horario, activo FROM usuario WHERE id_usuario = ?";
+        String sql = "SELECT id_usuario, nombre, apellido, rol, horario, activo, password_hash, must_change_password FROM usuario WHERE id_usuario = ?";
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
             ps.setInt(1, idUsuario);
             try (ResultSet rs = ps.executeQuery()) {
@@ -1128,6 +1242,8 @@ public class DatabaseService {
                     u.setRol(rs.getString("rol"));
                     u.setHorario(rs.getString("horario"));
                     u.setActivo(rs.getInt("activo") != 0);
+                    u.setPasswordHash(rs.getString("password_hash"));
+                    u.setPasswordChangeRequired(rs.getInt("must_change_password") != 0);
                     return u;
                 }
             }

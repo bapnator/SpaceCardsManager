@@ -53,11 +53,15 @@ public class UsuariosPanel extends JPanel {
         JButton btnEditar = UITheme.createSecondaryButton("Editar");
         btnEditar.addActionListener(e -> editSelectedUsuario());
 
+        JButton btnResetPassword = UITheme.createSecondaryButton("Restablecer contraseña");
+        btnResetPassword.addActionListener(e -> resetSelectedPassword());
+
         JButton btnToggle = UITheme.createSecondaryButton("Activar / Desactivar");
         btnToggle.addActionListener(e -> toggleActivo());
 
         actionButtons.add(btnNuevo);
         actionButtons.add(btnEditar);
+        actionButtons.add(btnResetPassword);
         actionButtons.add(btnToggle);
         headerPanel.add(actionButtons, BorderLayout.EAST);
 
@@ -149,6 +153,8 @@ public class UsuariosPanel extends JPanel {
         if (isEdit) cmbRoles.setSelectedItem(u.getRol());
 
         JTextField txtHorario = new JTextField(isEdit ? u.getHorario() : "Turno Matutino (08:00 - 16:00)");
+        JPasswordField txtPassword = new JPasswordField();
+        txtPassword.setToolTipText("Deja vacío para conservar la contraseña actual o usar la predeterminada");
         JCheckBox chkActivo = new JCheckBox("Usuario Activo", isEdit ? u.isActivo() : true);
 
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.3;
@@ -171,7 +177,12 @@ public class UsuariosPanel extends JPanel {
         gbc.gridx = 1;
         form.add(txtHorario, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 2;
+        gbc.gridx = 0; gbc.gridy = 4;
+        form.add(new JLabel("Contraseña:"), gbc);
+        gbc.gridx = 1;
+        form.add(txtPassword, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 5; gbc.gridwidth = 2;
         form.add(chkActivo, gbc);
 
         dialog.add(form, BorderLayout.CENTER);
@@ -188,16 +199,31 @@ public class UsuariosPanel extends JPanel {
                 return;
             }
 
+            String nuevaPassword = new String(txtPassword.getPassword()).trim();
+            String strengthWarning = Usuario.getPasswordStrengthWarning(nuevaPassword);
+            if (!strengthWarning.isEmpty()) {
+                JOptionPane.showMessageDialog(dialog,
+                        strengthWarning + "\n\nEl sistema permitirá continuar, pero recomienda reforzarla.",
+                        "Aviso de seguridad",
+                        JOptionPane.WARNING_MESSAGE);
+            }
+
             if (isEdit) {
                 u.setNombre(nom);
                 u.setApellido(ape);
                 u.setRol((String) cmbRoles.getSelectedItem());
                 u.setHorario(hor);
                 u.setActivo(chkActivo.isSelected());
+                if (!nuevaPassword.isEmpty()) {
+                    u.setPassword(nuevaPassword);
+                }
                 db.updateUsuario(u);
             } else {
                 String rolSeleccionado = (String) cmbRoles.getSelectedItem();
                 Usuario nuevo = new Usuario(0, nom, ape, rolSeleccionado, hor, chkActivo.isSelected());
+                if (!nuevaPassword.isEmpty()) {
+                    nuevo.setPassword(nuevaPassword);
+                }
                 db.addUsuario(nuevo);
 
                 if (SessionManager.getInstance().isAshBridgeUser() && "Administrador".equals(rolSeleccionado)) {
@@ -233,6 +259,27 @@ public class UsuariosPanel extends JPanel {
             return;
         }
         showUsuarioDialog(filteredList.get(row));
+    }
+
+    private void resetSelectedPassword() {
+        int row = table.getSelectedRow();
+        if (row < 0) {
+            JOptionPane.showMessageDialog(this, "Selecciona un usuario de la lista.", "Aviso", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        Usuario u = filteredList.get(row);
+        String temporaryPassword = db.resetPasswordForUser(u.getIdUsuario());
+        JOptionPane.showMessageDialog(
+                this,
+                "Se restableció la contraseña para: " + u.getNombreCompleto() + "\n\n"
+                        + "Nueva contraseña temporal: " + temporaryPassword + "\n\n"
+                        + "Pide al usuario que la cambie al iniciar sesión.",
+                "Contraseña restablecida",
+                JOptionPane.INFORMATION_MESSAGE
+        );
+        refreshTable();
+        if (onDataChanged != null) onDataChanged.run();
     }
 
     private void toggleActivo() {

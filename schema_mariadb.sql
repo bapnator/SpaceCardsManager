@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS usuario (
     apellido VARCHAR(50) NOT NULL,
     rol VARCHAR(30) NOT NULL CHECK (rol IN ('Administrador', 'Vendedor', 'Organizador_Torneos')),
     horario VARCHAR(50) NOT NULL,
-    activo BOOLEAN DEFAULT 1
+    activo BOOLEAN DEFAULT 1,
+    password_hash VARCHAR(255) NOT NULL DEFAULT '',
+    must_change_password BOOLEAN NOT NULL DEFAULT 0
 ) ENGINE=InnoDB;
 
 -- ========================================================
