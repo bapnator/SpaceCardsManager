@@ -7,4 +7,3 @@ public class Main {
         MainWindow.main(args);
     }
 }
-//que culote dijo mi tio ivan el viejon 

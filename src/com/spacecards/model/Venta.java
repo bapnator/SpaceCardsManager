@@ -13,6 +13,7 @@ public class Venta {
     private Usuario usuario;
     private LocalDateTime fechaVenta;
     private BigDecimal montoTotal;
+    private BigDecimal montoSaldoFavor = BigDecimal.ZERO;
     private String metodoPago; // 'Efectivo', 'Tarjeta', 'Transferencia'
     private List<DetalleVenta> detalles;
 
@@ -61,6 +62,11 @@ public class Venta {
 
     public BigDecimal getMontoTotal() { return montoTotal; }
     public void setMontoTotal(BigDecimal montoTotal) { this.montoTotal = montoTotal; }
+
+    public BigDecimal getMontoSaldoFavor() { return montoSaldoFavor; }
+    public void setMontoSaldoFavor(BigDecimal montoSaldoFavor) {
+        this.montoSaldoFavor = montoSaldoFavor != null ? montoSaldoFavor : BigDecimal.ZERO;
+    }
 
     public String getMetodoPago() { return metodoPago; }
     public void setMetodoPago(String metodoPago) { this.metodoPago = metodoPago; }
