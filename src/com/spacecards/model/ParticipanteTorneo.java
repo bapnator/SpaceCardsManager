@@ -13,6 +13,7 @@ public class ParticipanteTorneo {
     private boolean pagoConfirmado;
     private Integer posicionFinal; // Nullable
     private String premio;
+    private String premioInscripcion;
 
     public ParticipanteTorneo() {
         this.fechaInscripcion = LocalDateTime.now();
@@ -67,4 +68,12 @@ public class ParticipanteTorneo {
 
     public String getPremio() { return premio; }
     public void setPremio(String premio) { this.premio = premio; }
+
+    public String getPremioInscripcion() { return premioInscripcion; }
+    public void setPremioInscripcion(String premioInscripcion) { this.premioInscripcion = premioInscripcion; }
+
+    @Override
+    public String toString() {
+        return cliente != null ? cliente.getNombreCompleto() : "Cliente #" + idCliente;
+    }
 }

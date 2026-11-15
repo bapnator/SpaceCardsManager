@@ -40,6 +40,18 @@ public class Cliente {
     public String getTelefono() { return telefono; }
     public void setTelefono(String telefono) { this.telefono = telefono; }
 
+    public static boolean esTelefonoValido(String telefono) {
+        if (telefono == null) return false;
+        String valor = telefono.trim();
+        if (!valor.matches("\\+?[0-9\\s().-]+")) return false;
+
+        String digitos = valor.replaceAll("[^0-9]", "");
+        if (valor.startsWith("+52") && digitos.startsWith("52")) {
+            digitos = digitos.substring(2);
+        }
+        return digitos.length() == 10 && digitos.charAt(0) >= '2' && digitos.charAt(0) <= '9';
+    }
+
     public LocalDateTime getFechaRegistro() { return fechaRegistro; }
     public void setFechaRegistro(LocalDateTime fechaRegistro) { this.fechaRegistro = fechaRegistro; }
 

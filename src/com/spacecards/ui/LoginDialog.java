@@ -201,6 +201,8 @@ public class LoginDialog extends JDialog {
         JLabel lblSelect = new JLabel("Usuario:");
         lblSelect.setFont(UITheme.FONT_BOLD);
         lblSelect.setForeground(Color.WHITE);
+        lblSelect.setHorizontalAlignment(SwingConstants.CENTER);
+        lblSelect.setAlignmentX(Component.CENTER_ALIGNMENT);
         centerPanel.add(lblSelect);
         centerPanel.add(Box.createVerticalStrut(8));
 
@@ -227,6 +229,8 @@ public class LoginDialog extends JDialog {
         JLabel lblPassword = new JLabel("Contraseña:");
         lblPassword.setFont(UITheme.FONT_BOLD);
         lblPassword.setForeground(Color.WHITE);
+        lblPassword.setHorizontalAlignment(SwingConstants.CENTER);
+        lblPassword.setAlignmentX(Component.CENTER_ALIGNMENT);
         centerPanel.add(Box.createVerticalStrut(12));
         centerPanel.add(lblPassword);
         centerPanel.add(Box.createVerticalStrut(6));
@@ -270,12 +274,14 @@ public class LoginDialog extends JDialog {
                 JOptionPane.showMessageDialog(this, "Por favor selecciona un usuario válido.", "Aviso", JOptionPane.WARNING_MESSAGE);
             }
         });
+        txtPassword.addActionListener(e -> btnEntrar.doClick());
 
         btnPanel.add(btnSalir);
         btnPanel.add(btnEntrar);
         root.add(btnPanel, BorderLayout.SOUTH);
 
         setContentPane(root);
+        getRootPane().setDefaultButton(btnEntrar);
     }
 
     private boolean showRequiredPasswordChangeDialog(Usuario usuario, String temporaryPassword) {
@@ -291,7 +297,7 @@ public class LoginDialog extends JDialog {
         gbc.insets = new Insets(8, 8, 8, 8);
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
-        JLabel message = new JLabel("<html>El administrador restableció tu contraseña.<br>"
+        JLabel message = new JLabel("<html>Tu cuenta requiere una contraseña personal.<br>"
                 + "Antes de continuar, define una contraseña nueva.</html>");
         JPasswordField txtNew = new JPasswordField();
         JPasswordField txtConfirm = new JPasswordField();

@@ -159,8 +159,9 @@ public class PreventasPanel extends JPanel {
         JComboBox<Cliente> cmbCli = new JComboBox<>();
         for (Cliente c : db.getClientes()) cmbCli.addItem(c);
 
-        JComboBox<Usuario> cmbUsr = new JComboBox<>();
-        for (Usuario u : db.getUsuarios()) if (u.isActivo()) cmbUsr.addItem(u);
+        Usuario usuarioActual = SessionManager.getInstance().getCurrentUser();
+        JLabel lblUsuarioActual = new JLabel(usuarioActual == null
+                ? "Sin sesión" : usuarioActual.getNombreCompleto());
 
         JComboBox<Producto> cmbProd = new JComboBox<>();
         for (Producto p : db.getProductos()) {
@@ -227,7 +228,7 @@ public class PreventasPanel extends JPanel {
         gbc.gridx = 0; gbc.gridy = 1;
         form.add(new JLabel("Atendido por:*"), gbc);
         gbc.gridx = 1;
-        form.add(cmbUsr, gbc);
+        form.add(lblUsuarioActual, gbc);
 
         gbc.gridx = 0; gbc.gridy = 2;
         form.add(new JLabel("Producto TCG:*"), gbc);
@@ -260,11 +261,15 @@ public class PreventasPanel extends JPanel {
         JButton btnGuardar = UITheme.createPrimaryButton("Registrar Preventa");
         btnGuardar.addActionListener(e -> {
             Cliente cli = (Cliente) cmbCli.getSelectedItem();
-            Usuario usr = (Usuario) cmbUsr.getSelectedItem();
+            Usuario usr = SessionManager.getInstance().getCurrentUser();
             Producto prod = (Producto) cmbProd.getSelectedItem();
 
-            if (cli == null || usr == null || prod == null) {
-                JOptionPane.showMessageDialog(dialog, "Debes seleccionar cliente, usuario y producto.", "Validación", JOptionPane.WARNING_MESSAGE);
+            if (cli == null || prod == null) {
+                JOptionPane.showMessageDialog(dialog, "Debes seleccionar cliente y producto.", "Validación", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            if (usr == null || usr.getIdUsuario() <= 0 || !usr.isActivo()) {
+                JOptionPane.showMessageDialog(dialog, "Inicia sesión con un usuario activo para registrar la preventa.", "Validación", JOptionPane.WARNING_MESSAGE);
                 return;
             }
 
@@ -351,10 +356,33 @@ public class PreventasPanel extends JPanel {
             if (metodoPago == null) return;
 
             try {
-                db.liquidarPreventa(p.getIdPreventa(), metodoPago);
+                Usuario usuarioActual = SessionManager.getInstance().getCurrentUser();
+                if (usuarioActual == null || usuarioActual.getIdUsuario() <= 0 || !usuarioActual.isActivo()) {
+                    JOptionPane.showMessageDialog(this, "Inicia sesión con un usuario activo para liquidar la preventa.", "Validación", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+                BigDecimal saldoFavor = BigDecimal.ZERO;
+                BigDecimal saldoDisponible = db.getSaldoFavorCliente(p.getIdCliente());
+                BigDecimal maximoSaldoAplicable = saldoDisponible.min(p.getSaldoPendiente());
+                if (maximoSaldoAplicable.compareTo(BigDecimal.ZERO) > 0) {
+                    JCheckBox chkAplicarSaldo = new JCheckBox(
+                            "Aplicar automáticamente hasta $" + maximoSaldoAplicable + " del saldo disponible");
+                    int aplicar = JOptionPane.showConfirmDialog(this, chkAplicarSaldo,
+                            "Saldo a favor", JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
+                    if (aplicar != JOptionPane.OK_OPTION) return;
+                    if (chkAplicarSaldo.isSelected()) saldoFavor = maximoSaldoAplicable;
+                }
+                db.liquidarPreventa(p.getIdPreventa(), metodoPago, saldoFavor, usuarioActual.getIdUsuario());
                 refreshTable();
                 if (onDataChanged != null) onDataChanged.run();
-                JOptionPane.showMessageDialog(this, "Preventa #" + p.getIdPreventa() + " registrada como venta y marcada como Entregada.", "Éxito", JOptionPane.INFORMATION_MESSAGE);
+                String mensaje = "Preventa #" + p.getIdPreventa() +
+                        " registrada como venta y marcada como Entregada.";
+                if (saldoFavor.compareTo(BigDecimal.ZERO) > 0) {
+                    mensaje += "\nSaldo a favor utilizado: $" + saldoFavor;
+                }
+                JOptionPane.showMessageDialog(this,
+                        mensaje,
+                        "Éxito", JOptionPane.INFORMATION_MESSAGE);
             } catch (Exception ex) {
                 JOptionPane.showMessageDialog(this, "No se pudo liquidar la preventa: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             }
@@ -368,14 +396,27 @@ public class PreventasPanel extends JPanel {
             return;
         }
         Preventa p = filteredList.get(row);
+        if (!"Pendiente".equalsIgnoreCase(p.getEstado())) {
+            JOptionPane.showMessageDialog(this, "Solo se pueden cancelar preventas pendientes.", "Aviso", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
         int confirm = JOptionPane.showConfirmDialog(this,
-                "¿Estás seguro de cancelar la preventa #" + p.getIdPreventa() + "?",
+                "¿Cancelar la preventa #" + p.getIdPreventa() + "?\n" +
+                        "El anticipo pagado de $" + p.getMontoAnticipo() + " se devolverá como saldo a favor.",
                 "Confirmar Cancelación", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
 
         if (confirm == JOptionPane.YES_OPTION) {
-            db.updatePreventaEstado(p.getIdPreventa(), "Cancelado");
-            refreshTable();
-            if (onDataChanged != null) onDataChanged.run();
+            try {
+                db.updatePreventaEstado(p.getIdPreventa(), "Cancelado");
+                refreshTable();
+                if (onDataChanged != null) onDataChanged.run();
+                JOptionPane.showMessageDialog(this,
+                        "Se acreditaron $" + p.getMontoAnticipo() + " al saldo a favor de " +
+                                (p.getCliente() != null ? p.getCliente().getNombreCompleto() : "el cliente") + ".",
+                        "Saldo devuelto", JOptionPane.INFORMATION_MESSAGE);
+            } catch (RuntimeException ex) {
+                JOptionPane.showMessageDialog(this, ex.getMessage(), "No se pudo cancelar la preventa", JOptionPane.ERROR_MESSAGE);
+            }
         }
     }
 }

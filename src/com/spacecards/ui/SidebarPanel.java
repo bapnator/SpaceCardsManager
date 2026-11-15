@@ -7,7 +7,7 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -16,7 +16,8 @@ public class SidebarPanel extends JPanel {
     private final Consumer<String> onNavigate;
     private final Runnable onLogout;
     private final List<JButton> navButtons = new ArrayList<>();
-    private final Map<String, JButton> navMap = new HashMap<>();
+    private final Map<String, JButton> navMap = new LinkedHashMap<>();
+    private final JPanel navContainer = new JPanel();
     private final JLabel lblUser = new JLabel();
     private final JLabel lblRole = new JLabel();
     private final JLabel lblDbStatus;
@@ -52,7 +53,6 @@ public class SidebarPanel extends JPanel {
         this.add(headerPanel, BorderLayout.NORTH);
 
         // Center: Navigation buttons
-        JPanel navContainer = new JPanel();
         navContainer.setOpaque(false);
         navContainer.setLayout(new GridLayout(0, 1, 0, 6));
 
@@ -117,6 +117,7 @@ public class SidebarPanel extends JPanel {
         footerPanel.add(btnLogout);
 
         this.add(footerPanel, BorderLayout.SOUTH);
+        setCurrentUser(null);
     }
 
     private void addNavItem(JPanel container, String text, String cardName, boolean active) {
@@ -169,6 +170,15 @@ public class SidebarPanel extends JPanel {
     }
 
     public void setCurrentUser(Usuario user) {
+        navContainer.removeAll();
+        for (Map.Entry<String, JButton> entry : navMap.entrySet()) {
+            if (user != null && SessionManager.getInstance().canAccessCard(entry.getKey())) {
+                navContainer.add(entry.getValue());
+            }
+        }
+        navContainer.revalidate();
+        navContainer.repaint();
+
         if (user != null) {
             lblUser.setText(user.getNombreCompleto());
             if (user.getIdUsuario() == -1) {

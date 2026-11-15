@@ -184,7 +184,7 @@ public class InventarioPanel extends JPanel {
         tableModel.setRowCount(0);
         filteredList.clear();
 
-        for (Producto p : db.getProductos()) {
+        for (Producto p : db.getProductosInventario()) {
             boolean matchCat = cat == null || "Todas las categorías".equals(cat) || p.getCategoria().equalsIgnoreCase(cat);
             boolean matchJuego = juego == null || "Todos los juegos".equals(juego) || p.getJuegoTcg().equalsIgnoreCase(juego);
             boolean matchQuery = query.isEmpty() ||

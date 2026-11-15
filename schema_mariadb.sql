@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS venta (
     id_preventa INT NULL,
     fecha_venta DATETIME DEFAULT CURRENT_TIMESTAMP,
     monto_total DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    monto_saldo_favor DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     metodo_pago VARCHAR(30) NOT NULL CHECK (metodo_pago IN ('Efectivo', 'Tarjeta', 'Transferencia')),
     FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente) ON DELETE SET NULL,
     FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario)
@@ -141,6 +142,7 @@ CREATE TABLE IF NOT EXISTS torneo (
     fecha_evento DATETIME NOT NULL,
     costo_inscripcion DECIMAL(10,2) NOT NULL CHECK (costo_inscripcion >= 0),
     cupo_maximo INT NOT NULL CHECK (cupo_maximo > 0),
+    porcentaje_premios_monetarios DECIMAL(5,2) NOT NULL DEFAULT 0.00 CHECK (porcentaje_premios_monetarios >= 0 AND porcentaje_premios_monetarios <= 100),
     estado VARCHAR(20) DEFAULT 'Programado' CHECK (estado IN ('Programado', 'En Curso', 'Finalizado', 'Cancelado')),
     FOREIGN KEY (id_organizador) REFERENCES usuario(id_usuario)
 ) ENGINE=InnoDB;
@@ -157,9 +159,67 @@ CREATE TABLE IF NOT EXISTS participante_torneo (
     pago_confirmado BOOLEAN DEFAULT 0,
     posicion_final INT NULL,
     premio VARCHAR(255) NULL,
+    premio_inscripcion_otorgado VARCHAR(255) NULL,
     FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo) ON DELETE CASCADE,
     FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente),
     CONSTRAINT unique_jugador_torneo UNIQUE (id_torneo, id_cliente)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS saldo_favor (
+    id_saldo INT AUTO_INCREMENT PRIMARY KEY,
+    id_cliente INT NOT NULL,
+    monto_original DECIMAL(10,2) NOT NULL CHECK (monto_original > 0),
+    saldo_disponible DECIMAL(10,2) NOT NULL CHECK (saldo_disponible >= 0),
+    fecha_emision DATETIME NOT NULL,
+    fecha_vencimiento DATE NULL,
+    tipo_origen VARCHAR(40) NOT NULL,
+    id_origen INT NOT NULL,
+    CONSTRAINT unique_saldo_origen UNIQUE (tipo_origen, id_origen),
+    FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS producto_premio (
+    id_producto_premio INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    patrocinador VARCHAR(100) NULL,
+    descripcion VARCHAR(255) NULL,
+    stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS premio_torneo (
+    id_torneo INT NOT NULL,
+    posicion INT NOT NULL CHECK (posicion > 0),
+    tipo_premio VARCHAR(20) NOT NULL CHECK (tipo_premio IN ('MONETARIO', 'INVENTARIO', 'PATROCINADO')),
+    id_producto INT NULL,
+    id_producto_premio INT NULL,
+    porcentaje_fondo DECIMAL(5,2) NOT NULL DEFAULT 0.00 CHECK (porcentaje_fondo >= 0 AND porcentaje_fondo <= 100),
+    PRIMARY KEY (id_torneo, posicion),
+    FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo) ON DELETE CASCADE,
+    FOREIGN KEY (id_producto) REFERENCES producto(id_producto),
+    FOREIGN KEY (id_producto_premio) REFERENCES producto_premio(id_producto_premio)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS premio_inscripcion_torneo (
+    id_torneo INT PRIMARY KEY,
+    tipo_premio VARCHAR(20) NOT NULL CHECK (tipo_premio IN ('INVENTARIO', 'PATROCINADO', 'SALDO_FAVOR')),
+    id_producto INT NULL,
+    id_producto_premio INT NULL,
+    monto DECIMAL(10,2) NOT NULL DEFAULT 0.00 CHECK (monto >= 0),
+    FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo) ON DELETE CASCADE,
+    FOREIGN KEY (id_producto) REFERENCES producto(id_producto),
+    FOREIGN KEY (id_producto_premio) REFERENCES producto_premio(id_producto_premio)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS premio_inscripcion_otorgado (
+    id_premio INT AUTO_INCREMENT PRIMARY KEY,
+    id_torneo INT NOT NULL,
+    id_cliente INT NOT NULL,
+    id_inscripcion INT NOT NULL UNIQUE,
+    id_jugador_tcg VARCHAR(50) NULL,
+    fecha_otorgamiento DATETIME NOT NULL,
+    descripcion VARCHAR(255) NOT NULL,
+    FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo),
+    FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS configuracion_sistema (

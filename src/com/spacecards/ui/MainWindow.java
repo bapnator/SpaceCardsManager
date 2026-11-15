@@ -60,6 +60,9 @@ public class MainWindow extends JFrame {
         // Barra lateral con soporte de navegación y cambio de usuario
         sidebarPanel = new SidebarPanel(
             cardName -> {
+                if (!SessionManager.getInstance().canAccessCard(cardName)) {
+                    return;
+                }
                 cardLayout.show(cardsContainer, cardName);
                 refreshAllPanels();
                 if ("DATABASE".equals(cardName) && databasePanel != null) {
@@ -85,12 +88,15 @@ public class MainWindow extends JFrame {
         if (user != null) {
             SessionManager.getInstance().setCurrentUser(user);
             sidebarPanel.setCurrentUser(user);
+            String initialCard = SessionManager.getInstance().getFirstAccessibleCard();
 
             if (SessionManager.getInstance().isAshBridgeUser()) {
                 // Modo Usuario Puente: Redirigir a Personal / Staff
-                cardLayout.show(cardsContainer, "USUARIOS");
-                sidebarPanel.setActiveNav("USUARIOS");
-                refreshAllPanels();
+                if (initialCard != null) {
+                    cardLayout.show(cardsContainer, initialCard);
+                    sidebarPanel.setActiveNav(initialCard);
+                    refreshAllPanels();
+                }
                 JOptionPane.showMessageDialog(this,
                         "¡Bienvenido, Ash Ketchum!\n\n" +
                         "Has ingresado como 'Usuario Puente' de configuración inicial.\n" +
@@ -99,9 +105,11 @@ public class MainWindow extends JFrame {
                         "Modo Usuario Puente", JOptionPane.INFORMATION_MESSAGE);
             } else {
                 // Usuario normal del sistema
-                cardLayout.show(cardsContainer, "DASHBOARD");
-                sidebarPanel.setActiveNav("DASHBOARD");
-                refreshAllPanels();
+                if (initialCard != null) {
+                    cardLayout.show(cardsContainer, initialCard);
+                    sidebarPanel.setActiveNav(initialCard);
+                    refreshAllPanels();
+                }
             }
         } else {
             // Si no hay usuario activo, cerrar

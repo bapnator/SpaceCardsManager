@@ -14,6 +14,9 @@ public class Torneo {
     private int cupoMaximo;
     private String estado; // 'Programado', 'En Curso', 'Finalizado', 'Cancelado'
     private int participantesInscritos;
+    private int participantesPagados;
+    private BigDecimal porcentajePremiosMonetarios = BigDecimal.ZERO;
+    private BigDecimal porcentajeFondoAsignado = BigDecimal.ZERO;
 
     public Torneo() {
         this.juegoTcg = "Pokémon";
@@ -70,6 +73,40 @@ public class Torneo {
 
     public int getParticipantesInscritos() { return participantesInscritos; }
     public void setParticipantesInscritos(int participantesInscritos) { this.participantesInscritos = participantesInscritos; }
+
+    public int getParticipantesPagados() { return participantesPagados; }
+    public void setParticipantesPagados(int participantesPagados) { this.participantesPagados = participantesPagados; }
+
+    public BigDecimal getPorcentajePremiosMonetarios() { return porcentajePremiosMonetarios; }
+    public void setPorcentajePremiosMonetarios(BigDecimal porcentajePremiosMonetarios) {
+        this.porcentajePremiosMonetarios = porcentajePremiosMonetarios != null
+                ? porcentajePremiosMonetarios : BigDecimal.ZERO;
+    }
+
+    public BigDecimal getPorcentajeFondoAsignado() { return porcentajeFondoAsignado; }
+    public void setPorcentajeFondoAsignado(BigDecimal porcentajeFondoAsignado) {
+        this.porcentajeFondoAsignado = porcentajeFondoAsignado != null
+                ? porcentajeFondoAsignado : BigDecimal.ZERO;
+    }
+
+    public BigDecimal getRecaudacionEstimada() {
+        return costoInscripcion.multiply(BigDecimal.valueOf(cupoMaximo));
+    }
+
+    public BigDecimal getRecaudacionReal() {
+        if ("Cancelado".equalsIgnoreCase(estado)) return BigDecimal.ZERO;
+        return costoInscripcion.multiply(BigDecimal.valueOf(participantesPagados));
+    }
+
+    public BigDecimal getPremiosMonetariosReales() {
+        return getRecaudacionReal().multiply(porcentajePremiosMonetarios)
+                .multiply(porcentajeFondoAsignado)
+                .divide(new BigDecimal("10000"), 2, java.math.RoundingMode.HALF_UP);
+    }
+
+    public BigDecimal getIngresoTiendaReal() {
+        return getRecaudacionReal().subtract(getPremiosMonetariosReales());
+    }
 
     public int getCuposDisponibles() {
         return Math.max(0, cupoMaximo - participantesInscritos);

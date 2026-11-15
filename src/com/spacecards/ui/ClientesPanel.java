@@ -78,7 +78,7 @@ public class ClientesPanel extends JPanel {
 
         // Tabla
         tableModel = new DefaultTableModel(new String[]{
-                "ID", "Nombre", "Apellido", "Correo Electrónico", "Teléfono", "Fecha de Registro"
+                "ID", "Nombre", "Apellido", "Correo Electrónico", "Teléfono", "Saldo a favor", "Fecha de Registro"
         }, 0) {
             @Override
             public boolean isCellEditable(int row, int col) { return false; }
@@ -112,6 +112,7 @@ public class ClientesPanel extends JPanel {
                         c.getApellido(),
                         c.getCorreoElectronico(),
                         c.getTelefono(),
+                        "$" + db.getSaldoFavorCliente(c.getIdCliente()),
                         c.getFechaRegistro() != null ? c.getFechaRegistro().format(fmt) : "-"
                 });
             }
@@ -169,6 +170,13 @@ public class ClientesPanel extends JPanel {
 
             if (nom.isEmpty() || ape.isEmpty() || email.isEmpty() || tel.isEmpty()) {
                 JOptionPane.showMessageDialog(dialog, "Todos los campos con asterisco (*) son obligatorios.", "Validación", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            if (!Cliente.esTelefonoValido(tel)) {
+                JOptionPane.showMessageDialog(dialog,
+                        "Ingresa un teléfono mexicano válido de 10 dígitos; puedes incluir +52 y separadores.",
+                        "Validación", JOptionPane.WARNING_MESSAGE);
                 return;
             }
 

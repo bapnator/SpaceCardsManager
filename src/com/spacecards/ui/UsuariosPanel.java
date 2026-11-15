@@ -137,7 +137,7 @@ public class UsuariosPanel extends JPanel {
         boolean isEdit = (u != null);
         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this),
                 isEdit ? "Editar usuario" : "Registrar usuario", true);
-        dialog.setSize(440, 380);
+        dialog.setSize(440, isEdit ? 380 : 340);
         dialog.setLocationRelativeTo(this);
         dialog.setLayout(new BorderLayout(12, 12));
 
@@ -154,7 +154,7 @@ public class UsuariosPanel extends JPanel {
 
         JTextField txtHorario = new JTextField(isEdit ? u.getHorario() : "Turno Matutino (08:00 - 16:00)");
         JPasswordField txtPassword = new JPasswordField();
-        txtPassword.setToolTipText("Deja vacío para conservar la contraseña actual o usar la predeterminada");
+        txtPassword.setToolTipText("Deja vacío para conservar la contraseña actual");
         JCheckBox chkActivo = new JCheckBox("Usuario Activo", isEdit ? u.isActivo() : true);
 
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.3;
@@ -177,12 +177,14 @@ public class UsuariosPanel extends JPanel {
         gbc.gridx = 1;
         form.add(txtHorario, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 4;
-        form.add(new JLabel("Contraseña:"), gbc);
-        gbc.gridx = 1;
-        form.add(txtPassword, gbc);
+        if (isEdit) {
+            gbc.gridx = 0; gbc.gridy = 4;
+            form.add(new JLabel("Contraseña (opcional):"), gbc);
+            gbc.gridx = 1;
+            form.add(txtPassword, gbc);
+        }
 
-        gbc.gridx = 0; gbc.gridy = 5; gbc.gridwidth = 2;
+        gbc.gridx = 0; gbc.gridy = isEdit ? 5 : 4; gbc.gridwidth = 2;
         form.add(chkActivo, gbc);
 
         dialog.add(form, BorderLayout.CENTER);
@@ -199,13 +201,15 @@ public class UsuariosPanel extends JPanel {
                 return;
             }
 
-            String nuevaPassword = new String(txtPassword.getPassword()).trim();
-            String strengthWarning = Usuario.getPasswordStrengthWarning(nuevaPassword);
-            if (!strengthWarning.isEmpty()) {
-                JOptionPane.showMessageDialog(dialog,
-                        strengthWarning + "\n\nEl sistema permitirá continuar, pero recomienda reforzarla.",
-                        "Aviso de seguridad",
-                        JOptionPane.WARNING_MESSAGE);
+            String nuevaPassword = isEdit ? new String(txtPassword.getPassword()).trim() : "";
+            if (!nuevaPassword.isEmpty()) {
+                String strengthWarning = Usuario.getPasswordStrengthWarning(nuevaPassword);
+                if (!strengthWarning.isEmpty()) {
+                    JOptionPane.showMessageDialog(dialog,
+                            strengthWarning + "\n\nEl sistema permitirá continuar, pero recomienda reforzarla.",
+                            "Aviso de seguridad",
+                            JOptionPane.WARNING_MESSAGE);
+                }
             }
 
             if (isEdit) {
@@ -220,20 +224,28 @@ public class UsuariosPanel extends JPanel {
                 db.updateUsuario(u);
             } else {
                 String rolSeleccionado = (String) cmbRoles.getSelectedItem();
+                String temporaryPassword = Usuario.generateTemporaryPassword(nom);
                 Usuario nuevo = new Usuario(0, nom, ape, rolSeleccionado, hor, chkActivo.isSelected());
-                if (!nuevaPassword.isEmpty()) {
-                    nuevo.setPassword(nuevaPassword);
-                }
+                nuevo.setPassword(temporaryPassword);
+                nuevo.setPasswordChangeRequired(true);
                 db.addUsuario(nuevo);
 
                 if (SessionManager.getInstance().isAshBridgeUser() && "Administrador".equals(rolSeleccionado)) {
                     JOptionPane.showMessageDialog(dialog,
                             "¡Primer Administrador Registrado con Éxito!\n\n" +
                             "Nombre: " + nuevo.getNombreCompleto() + "\n" +
-                            "Rol: Administrador\n\n" +
+                            "Rol: Administrador\n" +
+                            "Contraseña temporal: " + temporaryPassword + "\n\n" +
+                            "Deberá crear una contraseña personal al iniciar sesión.\n\n" +
                             "A partir de este momento, el sistema ya cuenta con un Administrador oficial.\n" +
                             "Al cerrar esta sesión o cambiar de usuario, la cuenta puente 'Ash' quedará bloqueada.",
                             "Administrador Configurado", JOptionPane.INFORMATION_MESSAGE);
+                } else {
+                    JOptionPane.showMessageDialog(dialog,
+                            "Usuario registrado correctamente.\n\n" +
+                            "Contraseña temporal: " + temporaryPassword + "\n" +
+                            "Deberá crear una contraseña personal al iniciar sesión.",
+                            "Usuario registrado", JOptionPane.INFORMATION_MESSAGE);
                 }
             }
 

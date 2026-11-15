@@ -15,6 +15,7 @@ public class ConfiguracionPanel extends JPanel {
     private final JSpinner spinMargenLlegada = new JSpinner(new SpinnerNumberModel(7, 0, 365, 1));
     private final JSpinner spinPorcentajeApartado = new JSpinner(new SpinnerNumberModel(30.0, 0.01, 100.0, 1.0));
     private final JSpinner spinDiasVigencia = new JSpinner(new SpinnerNumberModel(30, 0, 365, 1));
+    private final JSpinner spinDiasVigenciaSaldo = new JSpinner(new SpinnerNumberModel(30, 0, 3650, 1));
     private final JTextField txtCostoTorneo = new JTextField("15.00", 12);
     private final JSpinner spinCupoTorneo = new JSpinner(new SpinnerNumberModel(16, 2, Integer.MAX_VALUE, 2));
 
@@ -103,8 +104,13 @@ public class ConfiguracionPanel extends JPanel {
         gbc.gridx = 1;
         formulario.add(spinCupoTorneo, gbc);
 
-        gbc.gridx = 0; gbc.gridy = 5; gbc.gridwidth = 2;
-        formulario.add(new JLabel("<html>El margen y la vigencia aceptan de 0 a 365 días. Los apartados vencidos se señalan para cancelación manual.<br>El porcentaje acepta de 0.01 a 100; el cupo de torneo debe ser par y mayor o igual a 2.</html>"), gbc);
+        gbc.gridx = 0; gbc.gridy = 5; gbc.gridwidth = 1;
+        formulario.add(new JLabel("Vigencia del saldo a favor (días):"), gbc);
+        gbc.gridx = 1;
+        formulario.add(spinDiasVigenciaSaldo, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 6; gbc.gridwidth = 2;
+        formulario.add(new JLabel("<html>Usa 0 días para que el saldo a favor nunca venza. La vigencia del apartado acepta de 0 a 365 días y el saldo a favor de 0 a 3650.<br>El porcentaje predeterminado acepta de 0.01 a 100; el cupo de torneo debe ser par y mayor o igual a 2.</html>"), gbc);
         panel.add(formulario, BorderLayout.CENTER);
 
         JButton btnGuardar = UITheme.createPrimaryButton("Guardar parámetros");
@@ -120,7 +126,8 @@ public class ConfiguracionPanel extends JPanel {
                         porcentaje,
                         (Integer) spinDiasVigencia.getValue(),
                         costo,
-                        (Integer) spinCupoTorneo.getValue());
+                        (Integer) spinCupoTorneo.getValue(),
+                        (Integer) spinDiasVigenciaSaldo.getValue());
                 if (onDataChanged != null) onDataChanged.run();
                 JOptionPane.showMessageDialog(this, "Los parámetros se guardaron correctamente.", "Configuración guardada", JOptionPane.INFORMATION_MESSAGE);
             } catch (java.text.ParseException ex) {
@@ -143,6 +150,7 @@ public class ConfiguracionPanel extends JPanel {
             spinMargenLlegada.setValue(db.getDiasMargenLlegada());
             spinPorcentajeApartado.setValue(db.getPorcentajeApartadoPredeterminado().doubleValue());
             spinDiasVigencia.setValue(db.getDiasVigenciaApartado());
+            spinDiasVigenciaSaldo.setValue(db.getDiasVigenciaSaldoFavor());
             txtCostoTorneo.setText(db.getCostoTorneoPredeterminado().toPlainString());
             spinCupoTorneo.setValue(db.getCupoTorneoPredeterminado());
         } catch (RuntimeException ex) {
