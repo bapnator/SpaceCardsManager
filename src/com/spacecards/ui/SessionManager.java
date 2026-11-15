@@ -33,16 +33,28 @@ public class SessionManager {
             // Ash Ketchum (Usuario Puente) SOLO tiene permiso para USUARIOS (Personal / Staff)
             return "USUARIOS".equals(cardName);
         }
+
         String rol = currentUser.getRol();
         if ("Administrador".equalsIgnoreCase(rol)) {
             return true; // Administrador tiene acceso total
         } else if ("Vendedor".equalsIgnoreCase(rol)) {
-            // Vendedor tiene acceso a POS, Inventario, Clientes, Preventas y Dashboard
-            return !"USUARIOS".equals(cardName) && !"DATABASE".equals(cardName);
+            // Vendedor tiene acceso a POS (ventas y preventas), Inventario, Clientes y Dashboard
+            return "DASHBOARD".equals(cardName) || "POS".equals(cardName)
+                    || "INVENTARIO".equals(cardName) || "CLIENTES".equals(cardName);
         } else if ("Organizador_Torneos".equalsIgnoreCase(rol)) {
-            // Organizador tiene acceso a Torneos, Clientes y Dashboard
-            return "TORNEOS".equals(cardName) || "CLIENTES".equals(cardName) || "DASHBOARD".equals(cardName);
+            // Organizador tiene acceso a Torneos, Configuración, Clientes y Dashboard
+            return "TORNEOS".equals(cardName) || "CONFIGURACION".equals(cardName) || "CLIENTES".equals(cardName) || "DASHBOARD".equals(cardName);
         }
-        return true;
+        return false;
+    }
+
+    public String getFirstAccessibleCard() {
+        String[] cards = {"DASHBOARD", "POS", "INVENTARIO", "CONFIGURACION", "CLIENTES", "TORNEOS", "USUARIOS", "DATABASE"};
+        for (String card : cards) {
+            if (canAccessCard(card)) {
+                return card;
+            }
+        }
+        return null;
     }
 }

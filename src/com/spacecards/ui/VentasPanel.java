@@ -8,8 +8,11 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class VentasPanel extends JPanel {
     private final DatabaseService db = DatabaseService.getInstance();
@@ -17,8 +20,8 @@ public class VentasPanel extends JPanel {
     // Catálogo
     private final JTextField txtBuscar = new JTextField();
     private final JComboBox<String> cmbCategoria = new JComboBox<>(new String[]{
-            "Todas las categorías", "Single Card", "Booster Box", "Elite Trainer Box", "Sleeves", "Deck"
-    });
+        });
+        private boolean updatingCategorias;
     private final DefaultTableModel catalogModel;
     private final JTable tableCatalog;
     private final JSpinner spinCantidad = new JSpinner(new SpinnerNumberModel(1, 1, 999, 1));
@@ -32,8 +35,10 @@ public class VentasPanel extends JPanel {
 
     // Checkout
     private final JComboBox<ClienteItem> cmbClientes = new JComboBox<>();
-    private final JComboBox<Usuario> cmbUsuarios = new JComboBox<>();
+    private final JLabel lblUsuarioActual = new JLabel();
     private final JComboBox<String> cmbMetodoPago = new JComboBox<>(new String[]{"Efectivo", "Tarjeta", "Transferencia"});
+    private final JLabel lblSaldoDisponible = new JLabel("$0.00");
+    private final JCheckBox chkUsarSaldoFavor = new JCheckBox("Aplicar saldo disponible automáticamente");
 
     private final Runnable onVentaCompletada;
 
@@ -55,9 +60,9 @@ public class VentasPanel extends JPanel {
         // Header
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
-        JLabel lblTitle = new JLabel("Punto de Venta (POS) - Registrar Venta");
+        JLabel lblTitle = new JLabel("Punto de venta");
         lblTitle.setFont(UITheme.FONT_TITLE);
-        JLabel lblSub = new JLabel("Selecciona cartas, sobres o accesorios y genera el ticket de venta");
+        JLabel lblSub = new JLabel("Registra las compras y prepara el comprobante de tus clientes");
         lblSub.setFont(UITheme.FONT_REGULAR);
         lblSub.setForeground(UITheme.COLOR_TEXT_MUTED);
 
@@ -92,7 +97,9 @@ public class VentasPanel extends JPanel {
         filterPanel.add(txtBuscar, gbc);
 
         gbc.gridx = 1; gbc.gridy = 0; gbc.weightx = 0.4;
-        cmbCategoria.addActionListener(e -> filterCatalog());
+        cmbCategoria.addActionListener(e -> {
+            if (!updatingCategorias) filterCatalog();
+        });
         filterPanel.add(cmbCategoria, gbc);
 
         panelCatalogo.add(filterPanel, BorderLayout.NORTH);
@@ -113,7 +120,7 @@ public class VentasPanel extends JPanel {
         spinCantidad.setPreferredSize(new Dimension(60, 30));
         addPanel.add(spinCantidad);
 
-        JButton btnAddToCart = UITheme.createPrimaryButton("➕ Añadir al Carrito");
+        JButton btnAddToCart = UITheme.createPrimaryButton("Añadir al Carrito");
         btnAddToCart.addActionListener(e -> addItemToCart());
         addPanel.add(btnAddToCart);
         panelCatalogo.add(addPanel, BorderLayout.SOUTH);
@@ -124,7 +131,7 @@ public class VentasPanel extends JPanel {
         JPanel panelCheckout = UITheme.createCardPanel();
         panelCheckout.setLayout(new BorderLayout(10, 10));
 
-        JLabel lblCartTitle = new JLabel("🛒 Carrito de Compras");
+        JLabel lblCartTitle = new JLabel("Carrito de compra");
         lblCartTitle.setFont(UITheme.FONT_SUBTITLE);
         panelCheckout.add(lblCartTitle, BorderLayout.NORTH);
 
@@ -140,7 +147,7 @@ public class VentasPanel extends JPanel {
         // Acciones carrito (Quitar item seleccionado)
         JPanel cartActions = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         cartActions.setOpaque(false);
-        JButton btnRemove = UITheme.createSecondaryButton("🗑️ Quitar del Carrito");
+        JButton btnRemove = UITheme.createSecondaryButton("Quitar del Carrito");
         btnRemove.addActionListener(e -> removeCartItem());
         JButton btnClear = UITheme.createSecondaryButton("Vaciar");
         btnClear.addActionListener(e -> clearCart());
@@ -160,27 +167,46 @@ public class VentasPanel extends JPanel {
         checkoutForm.add(cmbClientes, cf);
 
         cf.gridx = 0; cf.gridy = 1;
-        checkoutForm.add(new JLabel("Atendido por:"), cf);
+        checkoutForm.add(new JLabel("Saldo disponible:"), cf);
         cf.gridx = 1; cf.gridy = 1;
-        checkoutForm.add(cmbUsuarios, cf);
+        checkoutForm.add(lblSaldoDisponible, cf);
 
         cf.gridx = 0; cf.gridy = 2;
-        checkoutForm.add(new JLabel("Método de Pago:"), cf);
+        checkoutForm.add(new JLabel("Saldo a favor:"), cf);
         cf.gridx = 1; cf.gridy = 2;
-        checkoutForm.add(cmbMetodoPago, cf);
+        checkoutForm.add(chkUsarSaldoFavor, cf);
 
         cf.gridx = 0; cf.gridy = 3;
-        checkoutForm.add(new JLabel("TOTAL A COBRAR:"), cf);
+        checkoutForm.add(new JLabel("Atendido por:"), cf);
         cf.gridx = 1; cf.gridy = 3;
+        checkoutForm.add(lblUsuarioActual, cf);
+
+        cf.gridx = 0; cf.gridy = 4;
+        checkoutForm.add(new JLabel("Método de Pago:"), cf);
+        cf.gridx = 1; cf.gridy = 4;
+        checkoutForm.add(cmbMetodoPago, cf);
+
+        cf.gridx = 0; cf.gridy = 5;
+        checkoutForm.add(new JLabel("TOTAL A COBRAR:"), cf);
+        cf.gridx = 1; cf.gridy = 5;
         lblTotal.setFont(UITheme.FONT_BIG_NUMBER);
         lblTotal.setForeground(UITheme.COLOR_ACCENT);
         checkoutForm.add(lblTotal, cf);
 
-        JButton btnCobrar = UITheme.createAccentButton("💳 Confirmar y Cobrar Venta");
+        cf.gridx = 0; cf.gridy = 6; cf.gridwidth = 2;
+        checkoutForm.add(new JLabel("Puedes combinar saldo a favor con otro método de pago."), cf);
+
+        JButton btnCobrar = UITheme.createAccentButton("Confirmar y Cobrar Venta");
         btnCobrar.setPreferredSize(new Dimension(220, 42));
         btnCobrar.addActionListener(e -> processCheckout());
+        cmbClientes.addActionListener(e -> {
+            chkUsarSaldoFavor.setSelected(false);
+            refreshSaldoFavorLabel();
+            updateCartTable();
+        });
+        chkUsarSaldoFavor.addActionListener(e -> updateCartTable());
 
-        cf.gridx = 0; cf.gridy = 4; cf.gridwidth = 2;
+        cf.gridx = 0; cf.gridy = 7; cf.gridwidth = 2;
         checkoutForm.add(btnCobrar, cf);
 
         JPanel bottomContainer = new JPanel(new BorderLayout());
@@ -200,11 +226,23 @@ public class VentasPanel extends JPanel {
     private void filterCatalog() {
         String query = txtBuscar.getText().trim().toLowerCase();
         String cat = (String) cmbCategoria.getSelectedItem();
+        List<Producto> productos = db.getProductosInventario();
+        Map<Integer, Producto> productosActuales = new HashMap<>();
+        for (Producto producto : productos) {
+            productosActuales.put(producto.getIdProducto(), producto);
+        }
 
         catalogModel.setRowCount(0);
         currentCatalogList.clear();
+        boolean seRetiroTicketDelCarrito = cartItems.removeIf(detalle -> {
+            if (detalle.getProducto() == null || !detalle.getProducto().isTicketTorneo()) return false;
+            Producto actual = productosActuales.get(detalle.getIdProducto());
+            return actual == null || actual.getStock() <= 0;
+        });
+        if (seRetiroTicketDelCarrito) updateCartTable();
 
-        for (Producto p : db.getProductos()) {
+        for (Producto p : productos) {
+            if (p.isPreventa() || (p.isTicketTorneo() && p.getStock() <= 0)) continue;
             boolean matchCat = cat == null || "Todas las categorías".equals(cat) || p.getCategoria().equalsIgnoreCase(cat);
             boolean matchQuery = query.isEmpty() ||
                     p.getNombre().toLowerCase().contains(query) ||
@@ -278,6 +316,7 @@ public class VentasPanel extends JPanel {
     }
 
     private void updateCartTable() {
+        refreshSaldoFavorLabel();
         cartModel.setRowCount(0);
         BigDecimal total = BigDecimal.ZERO;
 
@@ -291,7 +330,17 @@ public class VentasPanel extends JPanel {
             total = total.add(d.getSubtotal());
         }
 
-        lblTotal.setText("$" + total);
+        BigDecimal saldoAplicado = calcularSaldoFavorAplicado(total);
+        BigDecimal restante = total.subtract(saldoAplicado).max(BigDecimal.ZERO);
+        lblTotal.setText("$" + total + " (saldo a favor: $" + saldoAplicado + ", por cobrar: $" + restante + ")");
+    }
+
+    private BigDecimal calcularSaldoFavorAplicado(BigDecimal total) {
+        if (!chkUsarSaldoFavor.isSelected()) return BigDecimal.ZERO;
+        ClienteItem selected = (ClienteItem) cmbClientes.getSelectedItem();
+        if (selected == null || selected.cliente == null) return BigDecimal.ZERO;
+        return db.getSaldoFavorCliente(selected.cliente.getIdCliente())
+                .min(total).setScale(2, RoundingMode.HALF_UP);
     }
 
     private void processCheckout() {
@@ -301,12 +350,20 @@ public class VentasPanel extends JPanel {
         }
 
         ClienteItem cliItem = (ClienteItem) cmbClientes.getSelectedItem();
-        Usuario usr = (Usuario) cmbUsuarios.getSelectedItem();
-        if (usr == null) {
-            JOptionPane.showMessageDialog(this, "Debe registrar y seleccionar al menos un usuario/empleado activo para realizar la venta.", "Atención", JOptionPane.WARNING_MESSAGE);
+        Usuario usr = SessionManager.getInstance().getCurrentUser();
+        if (usr == null || usr.getIdUsuario() <= 0 || !usr.isActivo()) {
+            JOptionPane.showMessageDialog(this, "Inicia sesión con un usuario activo para registrar la venta.", "Atención", JOptionPane.WARNING_MESSAGE);
             return;
         }
         String metodo = (String) cmbMetodoPago.getSelectedItem();
+        BigDecimal totalVenta = cartItems.stream()
+                .map(DetalleVenta::getSubtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (chkUsarSaldoFavor.isSelected() && (cliItem == null || cliItem.cliente == null)) {
+            JOptionPane.showMessageDialog(this, "Selecciona un cliente para aplicar saldo a favor.", "Validación", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        BigDecimal montoSaldoFavor = calcularSaldoFavorAplicado(totalVenta);
 
         Venta venta = new Venta();
         if (cliItem != null && cliItem.cliente != null) {
@@ -323,6 +380,7 @@ public class VentasPanel extends JPanel {
         }
 
         venta.setMetodoPago(metodo);
+        venta.setMontoSaldoFavor(montoSaldoFavor);
 
         for (DetalleVenta d : cartItems) {
             venta.addDetalle(d);
@@ -330,15 +388,24 @@ public class VentasPanel extends JPanel {
 
         try {
             db.registrarVenta(venta);
-            JOptionPane.showMessageDialog(this,
+            StringBuilder mensajeVenta = new StringBuilder(
                     "¡Venta registrada con éxito!\n\n" +
                             "Ticket: #" + venta.getIdVenta() + "\n" +
                             "Cliente: " + (venta.getCliente() != null ? venta.getCliente().getNombreCompleto() : "Público General") + "\n" +
-                            "Total pagado: $" + venta.getMontoTotal() + "\n" +
-                            "Método: " + venta.getMetodoPago(),
+                            "Total: $" + venta.getMontoTotal() + "\n");
+            if (venta.getMontoSaldoFavor().compareTo(BigDecimal.ZERO) > 0) {
+                mensajeVenta.append("Saldo a favor utilizado: $").append(venta.getMontoSaldoFavor()).append('\n')
+                        .append("Cobro restante: $")
+                        .append(venta.getMontoTotal().subtract(venta.getMontoSaldoFavor())).append('\n');
+            }
+            mensajeVenta.append("Método: ").append(venta.getMontoSaldoFavor().compareTo(venta.getMontoTotal()) == 0
+                    ? "Saldo a favor" : venta.getMetodoPago());
+            JOptionPane.showMessageDialog(this,
+                    mensajeVenta.toString(),
                     "Venta Completada", JOptionPane.INFORMATION_MESSAGE);
 
             clearCart();
+            chkUsarSaldoFavor.setSelected(false);
             filterCatalog();
             if (onVentaCompletada != null) onVentaCompletada.run();
         } catch (Exception ex) {
@@ -347,6 +414,7 @@ public class VentasPanel extends JPanel {
     }
 
     public void refreshAll() {
+        updateCategoryOptions();
         filterCatalog();
 
         // Recargar combos
@@ -356,22 +424,33 @@ public class VentasPanel extends JPanel {
             cmbClientes.addItem(new ClienteItem(c));
         }
 
-        cmbUsuarios.removeAllItems();
-        for (Usuario u : db.getUsuarios()) {
-            if (u.isActivo()) {
-                cmbUsuarios.addItem(u);
-            }
-        }
-
         Usuario current = SessionManager.getInstance().getCurrentUser();
-        if (current != null && current.getIdUsuario() > 0) {
-            for (int i = 0; i < cmbUsuarios.getItemCount(); i++) {
-                Usuario u = cmbUsuarios.getItemAt(i);
-                if (u.getIdUsuario() == current.getIdUsuario()) {
-                    cmbUsuarios.setSelectedIndex(i);
-                    break;
-                }
-            }
+        lblUsuarioActual.setText(current == null ? "Sin sesión" : current.getNombreCompleto());
+        refreshSaldoFavorLabel();
+    }
+
+    private void refreshSaldoFavorLabel() {
+        ClienteItem selected = (ClienteItem) cmbClientes.getSelectedItem();
+        BigDecimal saldo = selected != null && selected.cliente != null
+                ? db.getSaldoFavorCliente(selected.cliente.getIdCliente()) : BigDecimal.ZERO;
+        lblSaldoDisponible.setText("$" + saldo.setScale(2, RoundingMode.HALF_UP));
+        if (saldo.compareTo(BigDecimal.ZERO) <= 0) chkUsarSaldoFavor.setSelected(false);
+        chkUsarSaldoFavor.setEnabled(selected != null && selected.cliente != null &&
+                saldo.compareTo(BigDecimal.ZERO) > 0);
+    }
+
+    private void updateCategoryOptions() {
+        updatingCategorias = true;
+        try {
+            String current = (String) cmbCategoria.getSelectedItem();
+            cmbCategoria.removeAllItems();
+            cmbCategoria.addItem("Todas las categorías");
+            List<String> categories = db.getNombresCategoriasActivas();
+            for (String category : categories) cmbCategoria.addItem(category);
+            if ("Todas las categorías".equals(current) || categories.contains(current)) cmbCategoria.setSelectedItem(current);
+            else cmbCategoria.setSelectedIndex(0);
+        } finally {
+            updatingCategorias = false;
         }
     }
 }

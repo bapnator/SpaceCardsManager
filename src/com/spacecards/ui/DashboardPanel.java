@@ -10,15 +10,23 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class DashboardPanel extends JPanel {
     private final DatabaseService db = DatabaseService.getInstance();
     private final JLabel lblTotalVentas = new JLabel("$0.00");
     private final JLabel lblStockTotal = new JLabel("0 items");
     private final JLabel lblPreventasCount = new JLabel("0 activas");
+    private final JLabel lblAnticiposPreventas = new JLabel("$0.00");
     private final JLabel lblTorneosCount = new JLabel("0 eventos");
+    private final JPanel cardAlertasPreventa = UITheme.createCardPanel();
+    private final JTextArea txtAlertasPreventa = new JTextArea();
 
     private final DefaultTableModel ventasModel;
     private final JTable tableVentas;
@@ -34,10 +42,10 @@ public class DashboardPanel extends JPanel {
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
 
-        JLabel lblTitle = new JLabel("Panel de Control General");
+        JLabel lblTitle = new JLabel("Resumen de la tienda");
         lblTitle.setFont(UITheme.FONT_TITLE);
 
-        JLabel lblSub = new JLabel("Resumen de operaciones del TCG Pokémon y tienda especializada");
+        JLabel lblSub = new JLabel("Indicadores y actividad reciente de tu tienda especializada");
         lblSub.setFont(UITheme.FONT_REGULAR);
         lblSub.setForeground(UITheme.COLOR_TEXT_MUTED);
 
@@ -50,9 +58,16 @@ public class DashboardPanel extends JPanel {
 
         headerPanel.add(titleBox, BorderLayout.WEST);
 
-        JButton btnRefresh = UITheme.createSecondaryButton("🔄 Actualizar");
+        JPanel headerActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        headerActions.setOpaque(false);
+        JButton btnCorteCaja = UITheme.createPrimaryButton("Corte de caja de hoy");
+        btnCorteCaja.addActionListener(e -> showCorteCajaDialog());
+        headerActions.add(btnCorteCaja);
+
+        JButton btnRefresh = UITheme.createSecondaryButton("Actualizar");
         btnRefresh.addActionListener(e -> refreshData());
-        headerPanel.add(btnRefresh, BorderLayout.EAST);
+        headerActions.add(btnRefresh);
+        headerPanel.add(headerActions, BorderLayout.EAST);
 
         this.add(headerPanel, BorderLayout.NORTH);
 
@@ -60,16 +75,41 @@ public class DashboardPanel extends JPanel {
         JPanel centerPanel = new JPanel(new BorderLayout(16, 16));
         centerPanel.setOpaque(false);
 
-        // 4 KPI Cards
-        JPanel statsGrid = new JPanel(new GridLayout(1, 4, 16, 0));
+        // 5 KPI Cards
+        JPanel statsGrid = new JPanel(new GridLayout(1, 5, 16, 0));
         statsGrid.setOpaque(false);
 
-        statsGrid.add(createKpiCard("💰 Ingresos por Ventas", lblTotalVentas, UITheme.COLOR_SUCCESS));
-        statsGrid.add(createKpiCard("🎴 Inventario Disponible", lblStockTotal, UITheme.COLOR_PRIMARY));
-        statsGrid.add(createKpiCard("📦 Preventas Activas", lblPreventasCount, UITheme.COLOR_ACCENT));
-        statsGrid.add(createKpiCard("🏆 Torneos Programados", lblTorneosCount, new Color(168, 85, 247)));
+        statsGrid.add(createKpiCard("Ingresos por Ventas", lblTotalVentas, UITheme.COLOR_SUCCESS));
+        statsGrid.add(createKpiCard("Inventario Disponible", lblStockTotal, UITheme.COLOR_PRIMARY));
+        statsGrid.add(createKpiCard("Preventas Activas", lblPreventasCount, UITheme.COLOR_ACCENT));
+        statsGrid.add(createKpiCard("Anticipos Recaudados", lblAnticiposPreventas, UITheme.COLOR_SUCCESS));
+        statsGrid.add(createKpiCard("Torneos Programados", lblTorneosCount, new Color(168, 85, 247)));
 
-        centerPanel.add(statsGrid, BorderLayout.NORTH);
+        cardAlertasPreventa.setLayout(new BorderLayout(8, 8));
+        JLabel lblAlertasTitle = new JLabel("Unidades faltantes para pedidos anticipados");
+        lblAlertasTitle.setFont(UITheme.FONT_SUBTITLE);
+        lblAlertasTitle.setForeground(UITheme.COLOR_ACCENT);
+        txtAlertasPreventa.setEditable(false);
+        txtAlertasPreventa.setLineWrap(true);
+        txtAlertasPreventa.setWrapStyleWord(true);
+        txtAlertasPreventa.setFont(UITheme.FONT_REGULAR);
+        txtAlertasPreventa.setForeground(UITheme.COLOR_TEXT_MUTED);
+        txtAlertasPreventa.setOpaque(false);
+        txtAlertasPreventa.setBorder(null);
+        JScrollPane alertasScroll = new JScrollPane(txtAlertasPreventa);
+        alertasScroll.setBorder(null);
+        alertasScroll.setOpaque(false);
+        alertasScroll.getViewport().setOpaque(false);
+        alertasScroll.setPreferredSize(new Dimension(0, 68));
+        cardAlertasPreventa.add(lblAlertasTitle, BorderLayout.NORTH);
+        cardAlertasPreventa.add(alertasScroll, BorderLayout.CENTER);
+        cardAlertasPreventa.setVisible(false);
+
+        JPanel resumenSuperior = new JPanel(new BorderLayout(0, 12));
+        resumenSuperior.setOpaque(false);
+        resumenSuperior.add(statsGrid, BorderLayout.NORTH);
+        resumenSuperior.add(cardAlertasPreventa, BorderLayout.CENTER);
+        centerPanel.add(resumenSuperior, BorderLayout.NORTH);
 
         // Split view with 2 preview tables
         JPanel tablesPanel = new JPanel(new GridLayout(1, 2, 16, 0));
@@ -81,11 +121,11 @@ public class DashboardPanel extends JPanel {
 
         JPanel ventasHeader = new JPanel(new BorderLayout());
         ventasHeader.setOpaque(false);
-        JLabel lblVentasTitle = new JLabel("💳 Ventas Recientes");
+        JLabel lblVentasTitle = new JLabel("Ventas recientes");
         lblVentasTitle.setFont(UITheme.FONT_SUBTITLE);
         ventasHeader.add(lblVentasTitle, BorderLayout.WEST);
 
-        JButton btnVerDetalle = UITheme.createSecondaryButton("🔍 Ver Ticket / Detalle");
+        JButton btnVerDetalle = UITheme.createSecondaryButton("Ver Ticket / Detalle");
         btnVerDetalle.addActionListener(e -> showDetalleVentaDialog());
         ventasHeader.add(btnVerDetalle, BorderLayout.EAST);
         cardVentas.add(ventasHeader, BorderLayout.NORTH);
@@ -108,7 +148,7 @@ public class DashboardPanel extends JPanel {
         // Torneos Activos Card
         JPanel cardTorneos = UITheme.createCardPanel();
         cardTorneos.setLayout(new BorderLayout(8, 8));
-        JLabel lblTorneosTitle = new JLabel("🏆 Próximos Torneos & Eventos");
+        JLabel lblTorneosTitle = new JLabel("Próximos torneos y eventos");
         lblTorneosTitle.setFont(UITheme.FONT_SUBTITLE);
         cardTorneos.add(lblTorneosTitle, BorderLayout.NORTH);
 
@@ -157,15 +197,40 @@ public class DashboardPanel extends JPanel {
         int totalUnits = 0;
         List<Producto> listaProds = db.getProductos();
         for (Producto p : listaProds) {
-            totalUnits += p.getStock();
+            if (!p.isPreventa()) totalUnits += p.getStock();
         }
         lblStockTotal.setText(listaProds.size() + " ítems (" + totalUnits + " u.)");
 
         // Preventas
-        long preventasPendientes = db.getPreventas().stream()
-                .filter(p -> "Pendiente".equalsIgnoreCase(p.getEstado()))
-                .count();
+        List<com.spacecards.model.Preventa> preventas = db.getPreventas();
+        long preventasPendientes = 0;
+        BigDecimal anticiposPendientes = BigDecimal.ZERO;
+        Map<Integer, Integer> pedidosPendientesPorProducto = new HashMap<>();
+        for (com.spacecards.model.Preventa preventa : preventas) {
+            if ("Pendiente".equalsIgnoreCase(preventa.getEstado())) {
+                preventasPendientes++;
+                anticiposPendientes = anticiposPendientes.add(preventa.getMontoAnticipo());
+                Integer cantidad = pedidosPendientesPorProducto.get(preventa.getIdProducto());
+                pedidosPendientesPorProducto.put(preventa.getIdProducto(), cantidad == null ? 1 : cantidad + 1);
+            }
+        }
         lblPreventasCount.setText(preventasPendientes + " pendientes");
+        lblAnticiposPreventas.setText("$" + anticiposPendientes);
+
+        List<String> alertasPreventa = new ArrayList<>();
+        for (Producto producto : listaProds) {
+            if (!producto.isPreventa()) continue;
+            Integer pedidos = pedidosPendientesPorProducto.get(producto.getIdProducto());
+            int pedidosPendientesProducto = pedidos == null ? 0 : pedidos;
+            if (pedidosPendientesProducto > producto.getStock()) {
+                int faltantes = pedidosPendientesProducto - producto.getStock();
+                alertasPreventa.add(producto.getNombre() + ": " + pedidosPendientesProducto
+                        + " pedidos pendientes, " + producto.getStock() + " unidades solicitadas al proveedor. "
+                        + "Faltan " + faltantes + "; actualiza el pedido o solicita más unidades.");
+            }
+        }
+        txtAlertasPreventa.setText(String.join("\n", alertasPreventa));
+        cardAlertasPreventa.setVisible(!alertasPreventa.isEmpty());
 
         // Torneos
         long torneosActivos = db.getTorneos().stream()
@@ -200,6 +265,7 @@ public class DashboardPanel extends JPanel {
                     t.getEstado()
             });
         }
+        revalidate();
     }
 
     private void showDetalleVentaDialog() {
@@ -257,5 +323,106 @@ public class DashboardPanel extends JPanel {
         dlg.add(btnBar, BorderLayout.SOUTH);
 
         dlg.setVisible(true);
+    }
+
+    private void showCorteCajaDialog() {
+        LocalDate hoy = LocalDate.now();
+        List<DatabaseService.MovimientoCorteCaja> movimientos;
+        try {
+            movimientos = db.getMovimientosCorteCaja(hoy);
+        } catch (RuntimeException ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Error al generar el corte", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        BigDecimal ventas = BigDecimal.ZERO;
+        BigDecimal apartados = BigDecimal.ZERO;
+        BigDecimal liquidaciones = BigDecimal.ZERO;
+        BigDecimal recaudacionTorneos = BigDecimal.ZERO;
+        DefaultTableModel corteModel = new DefaultTableModel(
+                new String[]{"Hora", "Tipo", "Referencia", "Cliente", "Producto", "Método", "Ingreso"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int col) { return false; }
+        };
+
+        for (DatabaseService.MovimientoCorteCaja movimiento : movimientos) {
+            String tipo = movimiento.getTipo();
+            if ("Venta".equals(tipo)) {
+                ventas = ventas.add(movimiento.getMonto());
+            } else if ("Apartado de preventa".equals(tipo)) {
+                apartados = apartados.add(movimiento.getMonto());
+            } else if ("Liquidación de preventa".equals(tipo)) {
+                liquidaciones = liquidaciones.add(movimiento.getMonto());
+            } else if ("Inscripción a torneo".equals(tipo)) {
+                recaudacionTorneos = recaudacionTorneos.add(movimiento.getMonto());
+            }
+
+            String referencia;
+            if ("Venta".equals(tipo)) {
+                referencia = "Venta #" + movimiento.getReferencia();
+            } else if ("Apartado de preventa".equals(tipo) || "Liquidación de preventa".equals(tipo)) {
+                referencia = "Preventa #" + movimiento.getReferencia();
+            } else {
+                referencia = "Ticket #" + movimiento.getReferencia();
+            }
+            corteModel.addRow(new Object[]{
+                    movimiento.getFecha().format(DateTimeFormatter.ofPattern("HH:mm")),
+                    tipo,
+                    referencia,
+                    movimiento.getCliente(),
+                    movimiento.getProducto() == null ? "-" : movimiento.getProducto(),
+                    movimiento.getMetodoPago(),
+                    formatMoney(movimiento.getMonto())
+            });
+        }
+
+        BigDecimal total = ventas.add(apartados).add(liquidaciones).add(recaudacionTorneos);
+        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this),
+                "Corte de caja - " + hoy.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), true);
+        dialog.setSize(1050, 620);
+        dialog.setLocationRelativeTo(this);
+        dialog.setLayout(new BorderLayout(12, 12));
+
+        JPanel resumen = new JPanel(new GridLayout(1, 5, 12, 0));
+        resumen.setBorder(new EmptyBorder(12, 16, 0, 16));
+        resumen.add(createCorteResumen("Ventas del día", ventas));
+        resumen.add(createCorteResumen("Apartados de preventa", apartados));
+        resumen.add(createCorteResumen("Liquidaciones de preventa", liquidaciones));
+        resumen.add(createCorteResumen("Recaudación de torneos", recaudacionTorneos));
+        resumen.add(createCorteResumen("Total recaudado", total));
+
+        JTable tableCorte = new JTable(corteModel);
+        UITheme.formatTable(tableCorte);
+        JPanel contenido = new JPanel(new BorderLayout(8, 8));
+        contenido.setBorder(new EmptyBorder(0, 16, 0, 16));
+        contenido.add(resumen, BorderLayout.NORTH);
+        contenido.add(new JScrollPane(tableCorte), BorderLayout.CENTER);
+        dialog.add(contenido, BorderLayout.CENTER);
+
+        JPanel acciones = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        acciones.setBorder(new EmptyBorder(0, 12, 8, 12));
+        JButton btnCerrar = UITheme.createSecondaryButton("Cerrar");
+        btnCerrar.addActionListener(e -> dialog.dispose());
+        acciones.add(btnCerrar);
+        dialog.add(acciones, BorderLayout.SOUTH);
+        dialog.setVisible(true);
+    }
+
+    private JPanel createCorteResumen(String titulo, BigDecimal monto) {
+        JPanel card = UITheme.createCardPanel();
+        card.setLayout(new BorderLayout(4, 4));
+        JLabel lblTitulo = new JLabel(titulo);
+        lblTitulo.setFont(UITheme.FONT_REGULAR);
+        lblTitulo.setForeground(UITheme.COLOR_TEXT_MUTED);
+        JLabel lblMonto = new JLabel(formatMoney(monto));
+        lblMonto.setFont(UITheme.FONT_BOLD);
+        lblMonto.setForeground(UITheme.COLOR_SUCCESS);
+        card.add(lblTitulo, BorderLayout.NORTH);
+        card.add(lblMonto, BorderLayout.CENTER);
+        return card;
+    }
+
+    private String formatMoney(BigDecimal monto) {
+        return "$" + monto.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 }

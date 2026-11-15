@@ -13,16 +13,16 @@ public class MainWindow extends JFrame {
 
     private SidebarPanel sidebarPanel;
     private DashboardPanel dashboardPanel;
-    private VentasPanel ventasPanel;
+    private PuntoVentaPanel puntoVentaPanel;
     private InventarioPanel inventarioPanel;
+    private ConfiguracionPanel configuracionPanel;
     private ClientesPanel clientesPanel;
-    private PreventasPanel preventasPanel;
     private TorneosPanel torneosPanel;
     private UsuariosPanel usuariosPanel;
     private DatabasePanel databasePanel;
 
     public MainWindow() {
-        setTitle("Space Cards Manager - TCG Store [MariaDB + Tailscale]");
+        setTitle("Space Cards Manager");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1240, 800);
         setMinimumSize(new Dimension(1050, 680));
@@ -36,10 +36,10 @@ public class MainWindow extends JFrame {
         Runnable notifyDataChanged = this::refreshAllPanels;
 
         dashboardPanel = new DashboardPanel();
-        ventasPanel = new VentasPanel(notifyDataChanged);
+        puntoVentaPanel = new PuntoVentaPanel(notifyDataChanged);
         inventarioPanel = new InventarioPanel(notifyDataChanged);
+        configuracionPanel = new ConfiguracionPanel(notifyDataChanged);
         clientesPanel = new ClientesPanel(notifyDataChanged);
-        preventasPanel = new PreventasPanel(notifyDataChanged);
         torneosPanel = new TorneosPanel(notifyDataChanged);
         usuariosPanel = new UsuariosPanel(notifyDataChanged);
         databasePanel = new DatabasePanel(() -> {
@@ -49,10 +49,10 @@ public class MainWindow extends JFrame {
 
         // Registrar tarjetas
         cardsContainer.add(dashboardPanel, "DASHBOARD");
-        cardsContainer.add(ventasPanel, "POS");
+        cardsContainer.add(puntoVentaPanel, "POS");
         cardsContainer.add(inventarioPanel, "INVENTARIO");
+        cardsContainer.add(configuracionPanel, "CONFIGURACION");
         cardsContainer.add(clientesPanel, "CLIENTES");
-        cardsContainer.add(preventasPanel, "PREVENTAS");
         cardsContainer.add(torneosPanel, "TORNEOS");
         cardsContainer.add(usuariosPanel, "USUARIOS");
         cardsContainer.add(databasePanel, "DATABASE");
@@ -60,6 +60,9 @@ public class MainWindow extends JFrame {
         // Barra lateral con soporte de navegación y cambio de usuario
         sidebarPanel = new SidebarPanel(
             cardName -> {
+                if (!SessionManager.getInstance().canAccessCard(cardName)) {
+                    return;
+                }
                 cardLayout.show(cardsContainer, cardName);
                 refreshAllPanels();
                 if ("DATABASE".equals(cardName) && databasePanel != null) {
@@ -85,12 +88,15 @@ public class MainWindow extends JFrame {
         if (user != null) {
             SessionManager.getInstance().setCurrentUser(user);
             sidebarPanel.setCurrentUser(user);
+            String initialCard = SessionManager.getInstance().getFirstAccessibleCard();
 
             if (SessionManager.getInstance().isAshBridgeUser()) {
                 // Modo Usuario Puente: Redirigir a Personal / Staff
-                cardLayout.show(cardsContainer, "USUARIOS");
-                sidebarPanel.setActiveNav("USUARIOS");
-                refreshAllPanels();
+                if (initialCard != null) {
+                    cardLayout.show(cardsContainer, initialCard);
+                    sidebarPanel.setActiveNav(initialCard);
+                    refreshAllPanels();
+                }
                 JOptionPane.showMessageDialog(this,
                         "¡Bienvenido, Ash Ketchum!\n\n" +
                         "Has ingresado como 'Usuario Puente' de configuración inicial.\n" +
@@ -99,9 +105,11 @@ public class MainWindow extends JFrame {
                         "Modo Usuario Puente", JOptionPane.INFORMATION_MESSAGE);
             } else {
                 // Usuario normal del sistema
-                cardLayout.show(cardsContainer, "DASHBOARD");
-                sidebarPanel.setActiveNav("DASHBOARD");
-                refreshAllPanels();
+                if (initialCard != null) {
+                    cardLayout.show(cardsContainer, initialCard);
+                    sidebarPanel.setActiveNav(initialCard);
+                    refreshAllPanels();
+                }
             }
         } else {
             // Si no hay usuario activo, cerrar
@@ -113,10 +121,10 @@ public class MainWindow extends JFrame {
 
     private void refreshAllPanels() {
         if (dashboardPanel != null) dashboardPanel.refreshData();
-        if (ventasPanel != null) ventasPanel.refreshAll();
+        if (puntoVentaPanel != null) puntoVentaPanel.refreshPanels();
         if (inventarioPanel != null) inventarioPanel.refreshTable();
+        if (configuracionPanel != null) configuracionPanel.refreshTables();
         if (clientesPanel != null) clientesPanel.refreshTable();
-        if (preventasPanel != null) preventasPanel.refreshTable();
         if (torneosPanel != null) torneosPanel.refreshTorneos();
         if (usuariosPanel != null) usuariosPanel.refreshTable();
     }

@@ -29,7 +29,7 @@ public class ClientesPanel extends JPanel {
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
 
-        JLabel lblTitle = new JLabel("Directorio de Clientes");
+        JLabel lblTitle = new JLabel("Clientes");
         lblTitle.setFont(UITheme.FONT_TITLE);
         JLabel lblSub = new JLabel("Consulta y registro de clientes para compras, preventas y torneos");
         lblSub.setFont(UITheme.FONT_REGULAR);
@@ -48,13 +48,13 @@ public class ClientesPanel extends JPanel {
         JPanel actionButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         actionButtons.setOpaque(false);
 
-        JButton btnNuevo = UITheme.createPrimaryButton("➕ Registrar Cliente");
+        JButton btnNuevo = UITheme.createPrimaryButton("Registrar Cliente");
         btnNuevo.addActionListener(e -> showClienteDialog(null));
 
-        JButton btnEditar = UITheme.createSecondaryButton("✏️ Editar");
+        JButton btnEditar = UITheme.createSecondaryButton("Editar");
         btnEditar.addActionListener(e -> editSelectedCliente());
 
-        JButton btnEliminar = UITheme.createSecondaryButton("🗑️ Eliminar");
+        JButton btnEliminar = UITheme.createSecondaryButton("Eliminar");
         btnEliminar.addActionListener(e -> deleteSelectedCliente());
 
         actionButtons.add(btnNuevo);
@@ -78,7 +78,7 @@ public class ClientesPanel extends JPanel {
 
         // Tabla
         tableModel = new DefaultTableModel(new String[]{
-                "ID", "Nombre", "Apellido", "Correo Electrónico", "Teléfono", "Fecha de Registro"
+                "ID", "Nombre", "Apellido", "Correo Electrónico", "Teléfono", "Saldo a favor", "Fecha de Registro"
         }, 0) {
             @Override
             public boolean isCellEditable(int row, int col) { return false; }
@@ -112,6 +112,7 @@ public class ClientesPanel extends JPanel {
                         c.getApellido(),
                         c.getCorreoElectronico(),
                         c.getTelefono(),
+                        "$" + db.getSaldoFavorCliente(c.getIdCliente()),
                         c.getFechaRegistro() != null ? c.getFechaRegistro().format(fmt) : "-"
                 });
             }
@@ -121,7 +122,7 @@ public class ClientesPanel extends JPanel {
     private void showClienteDialog(Cliente c) {
         boolean isEdit = (c != null);
         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this),
-                isEdit ? "Editar Cliente" : "PantallaCrearRegistroCliente", true);
+                isEdit ? "Editar cliente" : "Registrar cliente", true);
         dialog.setSize(420, 360);
         dialog.setLocationRelativeTo(this);
         dialog.setLayout(new BorderLayout(12, 12));
@@ -160,7 +161,7 @@ public class ClientesPanel extends JPanel {
         dialog.add(form, BorderLayout.CENTER);
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton btnGuardar = UITheme.createPrimaryButton("💾 Guardar");
+        JButton btnGuardar = UITheme.createPrimaryButton("Guardar");
         btnGuardar.addActionListener(e -> {
             String nom = txtNombre.getText().trim();
             String ape = txtApellido.getText().trim();
@@ -169,6 +170,13 @@ public class ClientesPanel extends JPanel {
 
             if (nom.isEmpty() || ape.isEmpty() || email.isEmpty() || tel.isEmpty()) {
                 JOptionPane.showMessageDialog(dialog, "Todos los campos con asterisco (*) son obligatorios.", "Validación", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            if (!Cliente.esTelefonoValido(tel)) {
+                JOptionPane.showMessageDialog(dialog,
+                        "Ingresa un teléfono mexicano válido de 10 dígitos; puedes incluir +52 y separadores.",
+                        "Validación", JOptionPane.WARNING_MESSAGE);
                 return;
             }
 
