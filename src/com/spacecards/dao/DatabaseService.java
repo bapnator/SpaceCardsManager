@@ -95,6 +95,7 @@ public class DatabaseService {
             {"preventa", "id_preventa", "id_cliente", "id_usuario", "id_producto", "monto_anticipo", "monto_total", "fecha_solicitud", "fecha_estimada_entrega", "fecha_vencimiento_apartado", "estado"},
             {"torneo", "id_torneo", "id_organizador", "nombre_torneo", "juego_tcg", "fecha_evento", "costo_inscripcion", "cupo_maximo", "estado", "porcentaje_premios_monetarios"},
             {"participante_torneo", "id_inscripcion", "id_torneo", "id_cliente", "id_jugador_tcg", "fecha_inscripcion", "pago_confirmado", "posicion_final", "premio", "premio_inscripcion_otorgado"},
+            {"bracket_partida", "id_torneo", "ronda", "numero_partida", "tipo_partida", "id_participante_a", "id_participante_b", "id_ganador", "completada"},
             {"premio_inscripcion_otorgado", "id_premio", "id_torneo", "id_cliente", "id_inscripcion", "id_jugador_tcg", "fecha_otorgamiento", "descripcion"},
             {"saldo_favor", "id_saldo", "id_cliente", "monto_original", "saldo_disponible", "fecha_emision", "fecha_vencimiento", "tipo_origen", "id_origen"},
             {"producto_premio", "id_producto_premio", "nombre", "patrocinador", "descripcion", "stock"},
@@ -860,6 +861,20 @@ public class DatabaseService {
                     "descripcion VARCHAR(255) NOT NULL," +
                     "FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo)," +
                     "FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente))" + engine);
+            st.execute("CREATE TABLE IF NOT EXISTS bracket_partida (" +
+                    "id_torneo INT NOT NULL," +
+                    "ronda INT NOT NULL," +
+                    "numero_partida INT NOT NULL," +
+                    "tipo_partida VARCHAR(20) NOT NULL DEFAULT 'NORMAL' CHECK (tipo_partida IN ('NORMAL', 'TERCER_LUGAR'))," +
+                    "id_participante_a INT NULL," +
+                    "id_participante_b INT NULL," +
+                    "id_ganador INT NULL," +
+                    "completada BOOLEAN NOT NULL DEFAULT 0," +
+                    "PRIMARY KEY (id_torneo, ronda, tipo_partida, numero_partida)," +
+                    "FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo) ON DELETE CASCADE," +
+                    "FOREIGN KEY (id_participante_a) REFERENCES participante_torneo(id_inscripcion)," +
+                    "FOREIGN KEY (id_participante_b) REFERENCES participante_torneo(id_inscripcion)," +
+                    "FOREIGN KEY (id_ganador) REFERENCES participante_torneo(id_inscripcion))" + engine);
         }
     }
 
@@ -3086,6 +3101,513 @@ public class DatabaseService {
         return descripcion;
     }
 
+    public synchronized boolean existeBracketTorneo(int idTorneo) {
+        try (PreparedStatement ps = getConnection().prepareStatement(
+                "SELECT 1 FROM bracket_partida WHERE id_torneo = ? LIMIT 1")) {
+            ps.setInt(1, idTorneo);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException ex) {
+            throw new RuntimeException("No se pudo consultar el bracket del torneo: " + ex.getMessage(), ex);
+        }
+    }
+
+    public synchronized List<PartidaBracket> getBracketPartidas(int idTorneo) {
+        String sql = "SELECT bp.id_torneo, bp.ronda, bp.numero_partida, bp.tipo_partida, " +
+                "bp.id_participante_a, bp.id_participante_b, bp.id_ganador, bp.completada, " +
+                "ca.nombre AS nombre_a, ca.apellido AS apellido_a, pa.id_jugador_tcg AS jugador_a, " +
+                "cb.nombre AS nombre_b, cb.apellido AS apellido_b, pb.id_jugador_tcg AS jugador_b " +
+                "FROM bracket_partida bp " +
+                "LEFT JOIN participante_torneo pa ON pa.id_inscripcion = bp.id_participante_a " +
+                "LEFT JOIN cliente ca ON ca.id_cliente = pa.id_cliente " +
+                "LEFT JOIN participante_torneo pb ON pb.id_inscripcion = bp.id_participante_b " +
+                "LEFT JOIN cliente cb ON cb.id_cliente = pb.id_cliente " +
+                "WHERE bp.id_torneo = ? " +
+                "ORDER BY bp.ronda ASC, bp.tipo_partida ASC, bp.numero_partida ASC";
+        List<PartidaBracket> partidas = new ArrayList<>();
+        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            ps.setInt(1, idTorneo);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    PartidaBracket partida = leerPartidaBracket(rs);
+                    partida.setNombreParticipanteA(formatearNombreBracket(
+                            rs.getString("nombre_a"), rs.getString("apellido_a"), rs.getString("jugador_a")));
+                    partida.setNombreParticipanteB(formatearNombreBracket(
+                            rs.getString("nombre_b"), rs.getString("apellido_b"), rs.getString("jugador_b")));
+                    partidas.add(partida);
+                }
+            }
+        } catch (SQLException ex) {
+            throw new RuntimeException("No se pudo consultar el bracket del torneo: " + ex.getMessage(), ex);
+        }
+        return partidas;
+    }
+
+    public synchronized List<PartidaBracket> generarBracketTorneo(int idTorneo) throws Exception {
+        Connection conn = getConnection();
+        boolean originalAutoCommit = conn.getAutoCommit();
+        try {
+            conn.setAutoCommit(false);
+            String estado;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT estado FROM torneo WHERE id_torneo = ?")) {
+                ps.setInt(1, idTorneo);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) throw new Exception("No se encontró el torneo.");
+                    estado = rs.getString("estado");
+                }
+            }
+            if (!"En Curso".equalsIgnoreCase(estado)) {
+                throw new Exception("Cambia el torneo a En Curso antes de generar el bracket.");
+            }
+            if (existeBracket(conn, idTorneo)) {
+                conn.commit();
+                return getBracketPartidas(idTorneo);
+            }
+
+            List<Integer> inscripciones = new ArrayList<>();
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT id_inscripcion FROM participante_torneo " +
+                            "WHERE id_torneo = ? AND pago_confirmado = 1 ORDER BY id_inscripcion")) {
+                ps.setInt(1, idTorneo);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) inscripciones.add(rs.getInt("id_inscripcion"));
+                }
+            }
+            if (inscripciones.size() < 2) {
+                throw new Exception("Se necesitan al menos dos inscripciones pagadas para generar el bracket.");
+            }
+            Collections.shuffle(inscripciones, new java.security.SecureRandom());
+
+            int tamanoBracket = 1;
+            while (tamanoBracket < inscripciones.size()) {
+                if (tamanoBracket > (Integer.MAX_VALUE / 2)) {
+                    throw new Exception("Hay demasiados participantes para generar el bracket.");
+                }
+                tamanoBracket *= 2;
+            }
+            int cantidadRondas = Integer.numberOfTrailingZeros(tamanoBracket);
+            int cantidadPases = tamanoBracket - inscripciones.size();
+            int partidasPrimeraRonda = tamanoBracket / 2;
+            List<PartidaBracket> rondaAnterior = new ArrayList<>();
+            int indiceInscripcion = 0;
+            for (int numero = 1; numero <= partidasPrimeraRonda; numero++) {
+                PartidaBracket partida = new PartidaBracket();
+                partida.setIdTorneo(idTorneo);
+                partida.setRonda(1);
+                partida.setNumeroPartida(numero);
+                partida.setTipoPartida(PartidaBracket.TIPO_NORMAL);
+                Integer participanteA = inscripciones.get(indiceInscripcion++);
+                Integer participanteB = null;
+                Integer ganador = participanteA;
+                boolean completada = true;
+                if (numero > cantidadPases) {
+                    participanteB = inscripciones.get(indiceInscripcion++);
+                    ganador = null;
+                    completada = false;
+                }
+                partida.setIdParticipanteA(participanteA);
+                partida.setIdParticipanteB(participanteB);
+                partida.setIdGanador(ganador);
+                partida.setCompletada(completada);
+                partida.setPaseAutomatico(participanteB == null);
+                insertarPartidaBracket(conn, partida);
+                rondaAnterior.add(partida);
+            }
+
+            for (int ronda = 2; ronda <= cantidadRondas; ronda++) {
+                List<PartidaBracket> rondaActual = new ArrayList<>();
+                for (int i = 0; i < rondaAnterior.size(); i += 2) {
+                    PartidaBracket izquierda = rondaAnterior.get(i);
+                    PartidaBracket derecha = rondaAnterior.get(i + 1);
+                    Integer participanteA = izquierda.isCompletada() ? izquierda.getIdGanador() : null;
+                    Integer participanteB = derecha.isCompletada() ? derecha.getIdGanador() : null;
+                    boolean seResolvioLaRonda = izquierda.isCompletada() && derecha.isCompletada();
+                    boolean paseAutomatico = seResolvioLaRonda &&
+                            (participanteA == null || participanteB == null);
+                    PartidaBracket partida = new PartidaBracket();
+                    partida.setIdTorneo(idTorneo);
+                    partida.setRonda(ronda);
+                    partida.setNumeroPartida((i / 2) + 1);
+                    partida.setTipoPartida(PartidaBracket.TIPO_NORMAL);
+                    partida.setIdParticipanteA(participanteA);
+                    partida.setIdParticipanteB(participanteB);
+                    partida.setIdGanador(paseAutomatico
+                            ? (participanteA == null ? participanteB : participanteA) : null);
+                    partida.setCompletada(paseAutomatico);
+                    partida.setPaseAutomatico(paseAutomatico && partida.getIdGanador() != null);
+                    insertarPartidaBracket(conn, partida);
+                    rondaActual.add(partida);
+                }
+                rondaAnterior = rondaActual;
+            }
+
+            if (inscripciones.size() >= 4) {
+                PartidaBracket tercerLugar = new PartidaBracket();
+                tercerLugar.setIdTorneo(idTorneo);
+                tercerLugar.setRonda(cantidadRondas);
+                tercerLugar.setNumeroPartida(1);
+                tercerLugar.setTipoPartida(PartidaBracket.TIPO_TERCER_LUGAR);
+                insertarPartidaBracket(conn, tercerLugar);
+            }
+            conn.commit();
+        } catch (Exception ex) {
+            try { conn.rollback(); } catch (SQLException rollbackError) { ex.addSuppressed(rollbackError); }
+            throw ex;
+        } finally {
+            conn.setAutoCommit(originalAutoCommit);
+        }
+        syncSqliteBackup();
+        return getBracketPartidas(idTorneo);
+    }
+
+    public synchronized void actualizarGanadorBracket(int idTorneo, int ronda, int numeroPartida,
+                                                       String tipoPartida, Integer idGanador) throws Exception {
+        Connection conn = getConnection();
+        boolean originalAutoCommit = conn.getAutoCommit();
+        try {
+            conn.setAutoCommit(false);
+            String estado;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT estado FROM torneo WHERE id_torneo = ?")) {
+                ps.setInt(1, idTorneo);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) throw new Exception("No se encontró el torneo.");
+                    estado = rs.getString("estado");
+                }
+            }
+            if (!"En Curso".equalsIgnoreCase(estado)) {
+                throw new Exception("Solo se pueden registrar resultados mientras el torneo está En Curso.");
+            }
+            PartidaBracket partida = buscarPartidaBracket(conn, idTorneo, ronda, numeroPartida, tipoPartida);
+            if (partida == null) throw new Exception("No se encontró la partida seleccionada.");
+            if (partida.isPaseAutomatico()) {
+                throw new Exception("Esta partida se resolvió automáticamente por pase.");
+            }
+            if (partida.getIdParticipanteA() == null || partida.getIdParticipanteB() == null) {
+                throw new Exception("La partida todavía espera resultados de la ronda anterior.");
+            }
+            if (idGanador != null && !idGanador.equals(partida.getIdParticipanteA()) &&
+                    !idGanador.equals(partida.getIdParticipanteB())) {
+                throw new Exception("El ganador debe ser uno de los participantes de la partida.");
+            }
+            if (Objects.equals(partida.getIdGanador(), idGanador) &&
+                    partida.isCompletada() == (idGanador != null)) {
+                conn.commit();
+                return;
+            }
+
+            actualizarResultadoPartidaBracket(conn, idTorneo, ronda, numeroPartida, tipoPartida,
+                    partida.getIdParticipanteA(), partida.getIdParticipanteB(), idGanador, idGanador != null);
+            if (PartidaBracket.TIPO_NORMAL.equals(tipoPartida)) {
+                int ultimaRonda = obtenerUltimaRondaBracket(conn, idTorneo);
+                if (ronda < ultimaRonda) {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "UPDATE bracket_partida SET id_participante_a = NULL, id_participante_b = NULL, " +
+                                    "id_ganador = NULL, completada = 0 " +
+                                    "WHERE id_torneo = ? AND tipo_partida = 'NORMAL' AND ronda > ?")) {
+                        ps.setInt(1, idTorneo);
+                        ps.setInt(2, ronda);
+                        ps.executeUpdate();
+                    }
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "UPDATE bracket_partida SET id_participante_a = NULL, id_participante_b = NULL, " +
+                                    "id_ganador = NULL, completada = 0 " +
+                                    "WHERE id_torneo = ? AND tipo_partida = 'TERCER_LUGAR'")) {
+                        ps.setInt(1, idTorneo);
+                        ps.executeUpdate();
+                    }
+                    propagarBracketDesdeRonda(conn, idTorneo, ronda + 1, ultimaRonda);
+                    actualizarPartidaTercerLugar(conn, idTorneo, ultimaRonda);
+                }
+            }
+            conn.commit();
+        } catch (Exception ex) {
+            try { conn.rollback(); } catch (SQLException rollbackError) { ex.addSuppressed(rollbackError); }
+            throw ex;
+        } finally {
+            conn.setAutoCommit(originalAutoCommit);
+        }
+        syncSqliteBackup();
+    }
+
+    public synchronized Map<Integer, Integer> getPuestosAutomaticosBracket(int idTorneo) {
+        try {
+            return obtenerPuestosAutomaticosBracket(getConnection(), idTorneo);
+        } catch (SQLException ex) {
+            throw new RuntimeException("No se pudieron calcular los puestos del bracket: " + ex.getMessage(), ex);
+        }
+    }
+
+    private Map<Integer, Integer> obtenerPuestosAutomaticosBracket(Connection conn, int idTorneo)
+            throws SQLException {
+        Map<Integer, Integer> puestos = new LinkedHashMap<>();
+        if (!existeBracket(conn, idTorneo)) return puestos;
+        List<PartidaBracket> partidas = leerPartidasBracket(conn, idTorneo);
+        int ultimaRonda = 0;
+        for (PartidaBracket partida : partidas) {
+            if (PartidaBracket.TIPO_NORMAL.equals(partida.getTipoPartida())) {
+                ultimaRonda = Math.max(ultimaRonda, partida.getRonda());
+            }
+        }
+        PartidaBracket finalTorneo = buscarPartidaBracket(
+                conn, idTorneo, ultimaRonda, 1, PartidaBracket.TIPO_NORMAL);
+        if (finalTorneo == null || !finalTorneo.isCompletada() || finalTorneo.getIdGanador() == null) {
+            throw new IllegalStateException("Registra el ganador de la final antes de finalizar el torneo.");
+        }
+        int idPrimerLugar = finalTorneo.getIdGanador();
+        int idSegundoLugar = finalTorneo.getIdGanador().equals(finalTorneo.getIdParticipanteA())
+                ? finalTorneo.getIdParticipanteB() : finalTorneo.getIdParticipanteA();
+        puestos.put(1, obtenerClienteDeInscripcion(conn, idPrimerLugar));
+        puestos.put(2, obtenerClienteDeInscripcion(conn, idSegundoLugar));
+
+        int participantesPagados = contarParticipantesPagados(conn, idTorneo);
+        if (participantesPagados >= 4) {
+            PartidaBracket tercerLugar = buscarPartidaBracket(
+                    conn, idTorneo, ultimaRonda, 1, PartidaBracket.TIPO_TERCER_LUGAR);
+            if (tercerLugar == null || !tercerLugar.isCompletada() || tercerLugar.getIdGanador() == null) {
+                throw new IllegalStateException("Registra el resultado del partido por el tercer lugar.");
+            }
+            puestos.put(3, obtenerClienteDeInscripcion(conn, tercerLugar.getIdGanador()));
+        } else if (participantesPagados == 3) {
+            List<PartidaBracket> semifinales = obtenerPartidasRonda(
+                    conn, idTorneo, ultimaRonda - 1, PartidaBracket.TIPO_NORMAL);
+            List<Integer> eliminados = new ArrayList<>();
+            for (PartidaBracket semifinal : semifinales) {
+                if (semifinal.isCompletada() && semifinal.getIdGanador() != null &&
+                        semifinal.getIdParticipanteA() != null && semifinal.getIdParticipanteB() != null) {
+                    eliminados.add(semifinal.getIdGanador().equals(semifinal.getIdParticipanteA())
+                            ? semifinal.getIdParticipanteB() : semifinal.getIdParticipanteA());
+                }
+            }
+            if (eliminados.size() == 1) {
+                puestos.put(3, obtenerClienteDeInscripcion(conn, eliminados.get(0)));
+            }
+        }
+        return puestos;
+    }
+
+    private int contarParticipantesPagados(Connection conn, int idTorneo) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM participante_torneo WHERE id_torneo = ? AND pago_confirmado = 1")) {
+            ps.setInt(1, idTorneo);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        }
+    }
+
+    private int obtenerClienteDeInscripcion(Connection conn, int idInscripcion) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT id_cliente FROM participante_torneo WHERE id_inscripcion = ? AND pago_confirmado = 1")) {
+            ps.setInt(1, idInscripcion);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) throw new SQLException("El participante del bracket ya no tiene una inscripción pagada.");
+                return rs.getInt("id_cliente");
+            }
+        }
+    }
+
+    private boolean existeBracket(Connection conn, int idTorneo) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT 1 FROM bracket_partida WHERE id_torneo = ? LIMIT 1")) {
+            ps.setInt(1, idTorneo);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    private void insertarPartidaBracket(Connection conn, PartidaBracket partida) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO bracket_partida (id_torneo, ronda, numero_partida, tipo_partida, " +
+                        "id_participante_a, id_participante_b, id_ganador, completada) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+            ps.setInt(1, partida.getIdTorneo());
+            ps.setInt(2, partida.getRonda());
+            ps.setInt(3, partida.getNumeroPartida());
+            ps.setString(4, partida.getTipoPartida());
+            if (partida.getIdParticipanteA() == null) ps.setNull(5, Types.INTEGER);
+            else ps.setInt(5, partida.getIdParticipanteA());
+            if (partida.getIdParticipanteB() == null) ps.setNull(6, Types.INTEGER);
+            else ps.setInt(6, partida.getIdParticipanteB());
+            if (partida.getIdGanador() == null) ps.setNull(7, Types.INTEGER);
+            else ps.setInt(7, partida.getIdGanador());
+            ps.setInt(8, partida.isCompletada() ? 1 : 0);
+            ps.executeUpdate();
+        }
+    }
+
+    private PartidaBracket leerPartidaBracket(ResultSet rs) throws SQLException {
+        PartidaBracket partida = new PartidaBracket();
+        partida.setIdTorneo(rs.getInt("id_torneo"));
+        partida.setRonda(rs.getInt("ronda"));
+        partida.setNumeroPartida(rs.getInt("numero_partida"));
+        partida.setTipoPartida(rs.getString("tipo_partida"));
+        int participanteA = rs.getInt("id_participante_a");
+        partida.setIdParticipanteA(rs.wasNull() ? null : participanteA);
+        int participanteB = rs.getInt("id_participante_b");
+        partida.setIdParticipanteB(rs.wasNull() ? null : participanteB);
+        int ganador = rs.getInt("id_ganador");
+        partida.setIdGanador(rs.wasNull() ? null : ganador);
+        partida.setCompletada(rs.getInt("completada") != 0);
+        partida.setPaseAutomatico(partida.isCompletada() && partida.getIdGanador() != null &&
+                (partida.getIdParticipanteA() == null || partida.getIdParticipanteB() == null));
+        return partida;
+    }
+
+    private String formatearNombreBracket(String nombre, String apellido, String idJugador) {
+        if (nombre == null) return idJugador == null ? "Participante" : idJugador;
+        String nombreCompleto = (nombre + " " + (apellido == null ? "" : apellido)).trim();
+        return idJugador == null || idJugador.trim().isEmpty()
+                ? nombreCompleto : nombreCompleto + " (" + idJugador + ")";
+    }
+
+    private PartidaBracket buscarPartidaBracket(Connection conn, int idTorneo, int ronda,
+                                                int numeroPartida, String tipoPartida) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT id_torneo, ronda, numero_partida, tipo_partida, id_participante_a, " +
+                        "id_participante_b, id_ganador, completada FROM bracket_partida " +
+                        "WHERE id_torneo = ? AND ronda = ? AND numero_partida = ? AND tipo_partida = ?")) {
+            ps.setInt(1, idTorneo);
+            ps.setInt(2, ronda);
+            ps.setInt(3, numeroPartida);
+            ps.setString(4, tipoPartida);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? leerPartidaBracket(rs) : null;
+            }
+        }
+    }
+
+    private List<PartidaBracket> leerPartidasBracket(Connection conn, int idTorneo) throws SQLException {
+        List<PartidaBracket> partidas = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT id_torneo, ronda, numero_partida, tipo_partida, id_participante_a, " +
+                        "id_participante_b, id_ganador, completada FROM bracket_partida " +
+                        "WHERE id_torneo = ? ORDER BY ronda, tipo_partida, numero_partida")) {
+            ps.setInt(1, idTorneo);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) partidas.add(leerPartidaBracket(rs));
+            }
+        }
+        return partidas;
+    }
+
+    private List<PartidaBracket> obtenerPartidasRonda(Connection conn, int idTorneo, int ronda,
+                                                       String tipoPartida) throws SQLException {
+        List<PartidaBracket> partidas = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT id_torneo, ronda, numero_partida, tipo_partida, id_participante_a, " +
+                        "id_participante_b, id_ganador, completada FROM bracket_partida " +
+                        "WHERE id_torneo = ? AND ronda = ? AND tipo_partida = ? ORDER BY numero_partida")) {
+            ps.setInt(1, idTorneo);
+            ps.setInt(2, ronda);
+            ps.setString(3, tipoPartida);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) partidas.add(leerPartidaBracket(rs));
+            }
+        }
+        return partidas;
+    }
+
+    private int obtenerUltimaRondaBracket(Connection conn, int idTorneo) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT MAX(ronda) FROM bracket_partida WHERE id_torneo = ? AND tipo_partida = 'NORMAL'")) {
+            ps.setInt(1, idTorneo);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        }
+    }
+
+    private void actualizarResultadoPartidaBracket(Connection conn, int idTorneo, int ronda,
+                                                    int numeroPartida, String tipoPartida,
+                                                    Integer participanteA, Integer participanteB,
+                                                    Integer ganador, boolean completada) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE bracket_partida SET id_participante_a = ?, id_participante_b = ?, " +
+                        "id_ganador = ?, completada = ? WHERE id_torneo = ? AND ronda = ? " +
+                        "AND numero_partida = ? AND tipo_partida = ?")) {
+            if (participanteA == null) ps.setNull(1, Types.INTEGER);
+            else ps.setInt(1, participanteA);
+            if (participanteB == null) ps.setNull(2, Types.INTEGER);
+            else ps.setInt(2, participanteB);
+            if (ganador == null) ps.setNull(3, Types.INTEGER);
+            else ps.setInt(3, ganador);
+            ps.setInt(4, completada ? 1 : 0);
+            ps.setInt(5, idTorneo);
+            ps.setInt(6, ronda);
+            ps.setInt(7, numeroPartida);
+            ps.setString(8, tipoPartida);
+            if (ps.executeUpdate() != 1) throw new SQLException("No se pudo guardar el resultado de la partida.");
+        }
+    }
+
+    private void propagarBracketDesdeRonda(Connection conn, int idTorneo, int primeraRonda,
+                                            int ultimaRonda) throws SQLException {
+        for (int ronda = primeraRonda; ronda <= ultimaRonda; ronda++) {
+            List<PartidaBracket> partidasPrevias = obtenerPartidasRonda(
+                    conn, idTorneo, ronda - 1, PartidaBracket.TIPO_NORMAL);
+            List<PartidaBracket> partidasActuales = obtenerPartidasRonda(
+                    conn, idTorneo, ronda, PartidaBracket.TIPO_NORMAL);
+            for (PartidaBracket actual : partidasActuales) {
+                int indiceIzquierdo = (actual.getNumeroPartida() - 1) * 2;
+                PartidaBracket izquierda = partidasPrevias.get(indiceIzquierdo);
+                PartidaBracket derecha = partidasPrevias.get(indiceIzquierdo + 1);
+                Integer participanteA = izquierda.isCompletada() ? izquierda.getIdGanador() : null;
+                Integer participanteB = derecha.isCompletada() ? derecha.getIdGanador() : null;
+                boolean ambasPreviasCompletas = izquierda.isCompletada() && derecha.isCompletada();
+                boolean paseAutomatico = ambasPreviasCompletas &&
+                        (participanteA == null || participanteB == null);
+                Integer ganador = paseAutomatico
+                        ? (participanteA == null ? participanteB : participanteA) : null;
+                actualizarResultadoPartidaBracket(conn, idTorneo, ronda, actual.getNumeroPartida(),
+                        PartidaBracket.TIPO_NORMAL, participanteA, participanteB, ganador, paseAutomatico);
+            }
+        }
+    }
+
+    private void actualizarPartidaTercerLugar(Connection conn, int idTorneo, int ultimaRonda)
+            throws SQLException {
+        if (buscarPartidaBracket(conn, idTorneo, ultimaRonda, 1,
+                PartidaBracket.TIPO_TERCER_LUGAR) == null) return;
+        List<PartidaBracket> semifinales = obtenerPartidasRonda(
+                conn, idTorneo, ultimaRonda - 1, PartidaBracket.TIPO_NORMAL);
+        if (semifinales.size() != 2 || !semifinales.get(0).isCompletada() ||
+                !semifinales.get(1).isCompletada() ||
+                semifinales.get(0).getIdGanador() == null ||
+                semifinales.get(1).getIdGanador() == null ||
+                semifinales.get(0).getIdParticipanteA() == null ||
+                semifinales.get(0).getIdParticipanteB() == null ||
+                semifinales.get(1).getIdParticipanteA() == null ||
+                semifinales.get(1).getIdParticipanteB() == null) {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE bracket_partida SET id_participante_a = NULL, id_participante_b = NULL, " +
+                            "id_ganador = NULL, completada = 0 " +
+                            "WHERE id_torneo = ? AND tipo_partida = 'TERCER_LUGAR'")) {
+                ps.setInt(1, idTorneo);
+                ps.executeUpdate();
+            }
+            return;
+        }
+        PartidaBracket semiA = semifinales.get(0);
+        PartidaBracket semiB = semifinales.get(1);
+        int perdedorA = semiA.getIdGanador().equals(semiA.getIdParticipanteA())
+                ? semiA.getIdParticipanteB() : semiA.getIdParticipanteA();
+        int perdedorB = semiB.getIdGanador().equals(semiB.getIdParticipanteA())
+                ? semiB.getIdParticipanteB() : semiB.getIdParticipanteA();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE bracket_partida SET id_participante_a = ?, id_participante_b = ?, " +
+                        "id_ganador = NULL, completada = 0 " +
+                        "WHERE id_torneo = ? AND ronda = ? AND tipo_partida = 'TERCER_LUGAR'")) {
+            ps.setInt(1, perdedorA);
+            ps.setInt(2, perdedorB);
+            ps.setInt(3, idTorneo);
+            ps.setInt(4, ultimaRonda);
+            ps.executeUpdate();
+        }
+    }
+
     public synchronized void updateTorneoEstado(int idTorneo, String nuevoEstado) {
         if (!Arrays.asList("Programado", "En Curso", "Cancelado").contains(nuevoEstado)) {
             throw new IllegalArgumentException("Para finalizar un torneo, registra primero sus ganadores y premios.");
@@ -3116,6 +3638,10 @@ public class DatabaseService {
             }
             if ("Cancelado".equalsIgnoreCase(estadoActual) && !"Cancelado".equalsIgnoreCase(nuevoEstado)) {
                 throw new IllegalStateException("Un torneo cancelado no se puede reactivar.");
+            }
+            if ("En Curso".equalsIgnoreCase(estadoActual) && "Programado".equalsIgnoreCase(nuevoEstado) &&
+                    existeBracket(conn, idTorneo)) {
+                throw new IllegalStateException("No se puede reabrir la inscripción después de generar el bracket.");
             }
             if ("Cancelado".equalsIgnoreCase(nuevoEstado) && !"Cancelado".equalsIgnoreCase(estadoActual)) {
                 Map<Integer, Integer> inscripcionesPagadas = new LinkedHashMap<>();
@@ -3182,6 +3708,22 @@ public class DatabaseService {
             if (premios.isEmpty()) throw new Exception("Configura los premios antes de finalizar el torneo.");
             if (ganadorPorPosicion == null || ganadorPorPosicion.size() != premios.size()) {
                 throw new Exception("Debes asignar un ganador a cada puesto configurado.");
+            }
+            if (existeBracket(conn, idTorneo)) {
+                Map<Integer, Integer> puestosAutomaticos =
+                        obtenerPuestosAutomaticosBracket(conn, idTorneo);
+                for (PremioTorneo premio : premios) {
+                    if (premio.getPosicion() > 3) continue;
+                    Integer ganadorAutomatico = puestosAutomaticos.get(premio.getPosicion());
+                    if (ganadorAutomatico == null) {
+                        throw new Exception(premio.getPosicion() == 3
+                                ? "Completa el partido por el tercer lugar antes de finalizar."
+                                : "Completa el bracket antes de finalizar el torneo.");
+                    }
+                    if (!ganadorAutomatico.equals(ganadorPorPosicion.get(premio.getPosicion()))) {
+                        throw new Exception("Los puestos del primero al tercero deben coincidir con los resultados del bracket.");
+                    }
+                }
             }
 
             int participantesPagados;
@@ -3606,6 +4148,9 @@ public class DatabaseService {
             }
             if ("Finalizado".equalsIgnoreCase(estadoTorneo) || "Cancelado".equalsIgnoreCase(estadoTorneo)) {
                 throw new IllegalStateException("No se puede cancelar la inscripción de un torneo finalizado o cancelado.");
+            }
+            if (existeBracket(conn, idTorneo)) {
+                throw new IllegalStateException("No se puede cancelar una inscripción después de generar el bracket.");
             }
             if (pagoConfirmado) emitirSaldoFavor(conn, idCliente, costoInscripcion, "TORNEO", idInscripcion);
             try (PreparedStatement ps = conn.prepareStatement(

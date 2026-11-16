@@ -152,6 +152,22 @@ CREATE TABLE IF NOT EXISTS participante_torneo (
     CONSTRAINT unique_jugador_torneo UNIQUE (id_torneo, id_cliente) -- Evita doble inscripción
 );
 
+CREATE TABLE IF NOT EXISTS bracket_partida (
+    id_torneo INT NOT NULL,
+    ronda INT NOT NULL,
+    numero_partida INT NOT NULL,
+    tipo_partida VARCHAR(20) NOT NULL DEFAULT 'NORMAL' CHECK (tipo_partida IN ('NORMAL', 'TERCER_LUGAR')),
+    id_participante_a INT NULL,
+    id_participante_b INT NULL,
+    id_ganador INT NULL,
+    completada BOOLEAN NOT NULL DEFAULT 0,
+    PRIMARY KEY (id_torneo, ronda, tipo_partida, numero_partida),
+    FOREIGN KEY (id_torneo) REFERENCES torneo(id_torneo) ON DELETE CASCADE,
+    FOREIGN KEY (id_participante_a) REFERENCES participante_torneo(id_inscripcion),
+    FOREIGN KEY (id_participante_b) REFERENCES participante_torneo(id_inscripcion),
+    FOREIGN KEY (id_ganador) REFERENCES participante_torneo(id_inscripcion)
+);
+
 CREATE TABLE IF NOT EXISTS saldo_favor (
     id_saldo INTEGER PRIMARY KEY AUTOINCREMENT,
     id_cliente INT NOT NULL,

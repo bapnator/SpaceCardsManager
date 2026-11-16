@@ -4,6 +4,7 @@ import com.spacecards.dao.DatabaseService;
 import com.spacecards.model.Cliente;
 import com.spacecards.model.HistorialPremioTorneo;
 import com.spacecards.model.ParticipanteTorneo;
+import com.spacecards.model.PartidaBracket;
 import com.spacecards.model.PremioInscripcionTorneo;
 import com.spacecards.model.PremioTorneo;
 import com.spacecards.model.Producto;
@@ -131,6 +132,9 @@ public class TorneosPanel extends JPanel {
 
         JPanel participantActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         participantActions.setOpaque(false);
+        JButton btnBracket = UITheme.createSecondaryButton("Bracket");
+        btnBracket.addActionListener(e -> mostrarBracketSeleccionado());
+        participantActions.add(btnBracket);
         JButton btnConfigurarPremios = UITheme.createSecondaryButton("Configurar Premios");
         btnConfigurarPremios.addActionListener(e -> configurarPremiosSeleccionado());
         participantActions.add(btnConfigurarPremios);
@@ -284,7 +288,7 @@ public class TorneosPanel extends JPanel {
         }
         JCheckBox chkPremioInscripcion = new JCheckBox("Dar un premio al confirmar cada inscripción");
         chkPremioInscripcion.setToolTipText(
-                "Se entrega al confirmar el pago. Si luego se cancela la inscripción, el premio no se devuelve automáticamente.");
+                "Se entrega al confirmar el pago. Si luego se cancela la inscripción o el torneo, el premio no se devuelve automáticamente.");
         JComboBox<String> cmbTipoPremioInscripcion = new JComboBox<>(new String[]{
                 "Producto del inventario", "Producto patrocinado", "Saldo a favor"
         });
@@ -1170,6 +1174,206 @@ public class TorneosPanel extends JPanel {
         return false;
     }
 
+    private void mostrarBracketSeleccionado() {
+        Torneo torneo = getTorneoSeleccionado();
+        if (torneo == null) {
+            JOptionPane.showMessageDialog(this, "Selecciona un torneo para ver su bracket.",
+                    "Aviso", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        try {
+            boolean bracketExistente = db.existeBracketTorneo(torneo.getIdTorneo());
+            if (!bracketExistente && !"En Curso".equalsIgnoreCase(torneo.getEstado())) {
+                JOptionPane.showMessageDialog(this, "Cambia el torneo a En Curso antes de generar el bracket.",
+                        "Bracket no disponible", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            if (!bracketExistente) {
+                int pagados = 0;
+                for (ParticipanteTorneo participante : db.getParticipantesByTorneo(torneo.getIdTorneo())) {
+                    if (participante.isPagoConfirmado()) pagados++;
+                }
+                if (pagados < 2) {
+                    JOptionPane.showMessageDialog(this,
+                            "Se necesitan al menos dos inscripciones pagadas para generar el bracket.",
+                            "Faltan participantes", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+                int confirmar = JOptionPane.showConfirmDialog(this,
+                        "Se sortearán " + pagados + " participantes con inscripción pagada. " +
+                                "El bracket no se puede volver a sortear y bloqueará la cancelación de inscripciones. ¿Continuar?",
+                        "Generar bracket", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+                if (confirmar != JOptionPane.YES_OPTION) return;
+                db.generarBracketTorneo(torneo.getIdTorneo());
+            }
+            mostrarBracket(torneo, "En Curso".equalsIgnoreCase(torneo.getEstado()));
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "No se pudo generar el bracket", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void mostrarBracket(Torneo torneo, boolean editable) {
+        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this),
+                "Bracket: " + torneo.getNombreTorneo(), true);
+        dialog.setSize(980, 620);
+        dialog.setLocationRelativeTo(this);
+        dialog.setLayout(new BorderLayout(8, 8));
+
+        JLabel instrucciones = new JLabel(editable
+                ? "Selecciona el ganador de cada partida. Si cambias un resultado, se reinician las rondas posteriores."
+                : "Bracket en modo consulta.");
+        instrucciones.setBorder(new EmptyBorder(10, 12, 4, 12));
+        dialog.add(instrucciones, BorderLayout.NORTH);
+
+        JTabbedPane rondas = new JTabbedPane();
+        dialog.add(rondas, BorderLayout.CENTER);
+        Runnable[] actualizarBracket = new Runnable[1];
+        actualizarBracket[0] = () -> {
+            int pestañaSeleccionada = rondas.getSelectedIndex();
+            rondas.removeAll();
+            List<PartidaBracket> partidas = db.getBracketPartidas(torneo.getIdTorneo());
+            List<ParticipanteTorneo> participantes = db.getParticipantesByTorneo(torneo.getIdTorneo());
+            Map<Integer, ParticipanteTorneo> porInscripcion = new LinkedHashMap<>();
+            for (ParticipanteTorneo participante : participantes) {
+                porInscripcion.put(participante.getIdInscripcion(), participante);
+            }
+            int ultimaRonda = 0;
+            for (PartidaBracket partida : partidas) {
+                if (PartidaBracket.TIPO_NORMAL.equals(partida.getTipoPartida())) {
+                    ultimaRonda = Math.max(ultimaRonda, partida.getRonda());
+                }
+            }
+            for (int ronda = 1; ronda <= ultimaRonda; ronda++) {
+                JPanel listaPartidas = new JPanel();
+                listaPartidas.setBorder(new EmptyBorder(12, 12, 12, 12));
+                listaPartidas.setLayout(new BoxLayout(listaPartidas, BoxLayout.Y_AXIS));
+                for (PartidaBracket partida : partidas) {
+                    if (partida.getRonda() != ronda) continue;
+                    listaPartidas.add(crearTarjetaPartidaBracket(
+                            dialog, torneo, partida, porInscripcion, editable, actualizarBracket[0]));
+                    listaPartidas.add(Box.createVerticalStrut(8));
+                }
+                JScrollPane scroll = new JScrollPane(listaPartidas);
+                rondas.addTab(nombreRondaBracket(ronda, ultimaRonda), scroll);
+            }
+            if (pestañaSeleccionada >= 0 && pestañaSeleccionada < rondas.getTabCount()) {
+                rondas.setSelectedIndex(pestañaSeleccionada);
+            }
+        };
+        actualizarBracket[0].run();
+
+        JPanel acciones = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton btnCerrar = UITheme.createSecondaryButton("Cerrar");
+        btnCerrar.addActionListener(e -> dialog.dispose());
+        acciones.add(btnCerrar);
+        dialog.add(acciones, BorderLayout.SOUTH);
+        dialog.setVisible(true);
+    }
+
+    private JPanel crearTarjetaPartidaBracket(JDialog dialog, Torneo torneo, PartidaBracket partida,
+                                               Map<Integer, ParticipanteTorneo> participantes,
+                                               boolean editable,
+                                               Runnable actualizarBracket) {
+        JPanel tarjeta = UITheme.createCardPanel();
+        tarjeta.setLayout(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(4, 6, 4, 6);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1;
+        String titulo = PartidaBracket.TIPO_TERCER_LUGAR.equals(partida.getTipoPartida())
+                ? "Partido por el tercer lugar"
+                : "Partida " + partida.getNumeroPartida();
+        gbc.gridx = 0; gbc.gridy = 0;
+        tarjeta.add(new JLabel(titulo), gbc);
+
+        String nombreA = partida.getNombreParticipanteA() == null
+                ? "Por definir" : partida.getNombreParticipanteA();
+        String nombreB = partida.getNombreParticipanteB() == null
+                ? "Por definir" : partida.getNombreParticipanteB();
+        gbc.gridy = 1;
+        tarjeta.add(new JLabel(nombreA + "  vs  " + nombreB), gbc);
+
+        if (partida.isPaseAutomatico()) {
+            gbc.gridy = 2;
+            tarjeta.add(new JLabel("Pase automático: avanza " +
+                    (nombreA.equals("Por definir") ? nombreB : nombreA)), gbc);
+            return tarjeta;
+        }
+        if (partida.getIdParticipanteA() == null || partida.getIdParticipanteB() == null) {
+            gbc.gridy = 2;
+            tarjeta.add(new JLabel("Esperando resultados de la ronda anterior."), gbc);
+            return tarjeta;
+        }
+
+        JComboBox<ParticipanteTorneo> cmbGanador = new JComboBox<>();
+        ParticipanteTorneo participanteA = participantes.get(partida.getIdParticipanteA());
+        ParticipanteTorneo participanteB = participantes.get(partida.getIdParticipanteB());
+        if (participanteA == null || participanteB == null) {
+            gbc.gridy = 2;
+            tarjeta.add(new JLabel("No se encontraron los participantes de esta partida."), gbc);
+            return tarjeta;
+        }
+        cmbGanador.addItem(participanteA);
+        cmbGanador.addItem(participanteB);
+        cmbGanador.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                          boolean isSelected, boolean cellHasFocus) {
+                return super.getListCellRendererComponent(list,
+                        value == null ? "Seleccionar ganador..." : value.toString(),
+                        index, isSelected, cellHasFocus);
+            }
+        });
+        if (partida.getIdGanador() != null) {
+            cmbGanador.setSelectedItem(partida.getIdGanador().equals(participanteA.getIdInscripcion())
+                    ? participanteA : participanteB);
+        } else {
+            cmbGanador.setSelectedIndex(-1);
+        }
+        cmbGanador.addActionListener(e -> {
+            if (!editable) return;
+            ParticipanteTorneo ganador = (ParticipanteTorneo) cmbGanador.getSelectedItem();
+            if (ganador == null) return;
+            try {
+                db.actualizarGanadorBracket(torneo.getIdTorneo(), partida.getRonda(),
+                        partida.getNumeroPartida(), partida.getTipoPartida(), ganador.getIdInscripcion());
+                actualizarBracket.run();
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(dialog, ex.getMessage(),
+                        "No se pudo guardar el resultado", JOptionPane.ERROR_MESSAGE);
+                actualizarBracket.run();
+            }
+        });
+        cmbGanador.setEnabled(editable);
+
+        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.2;
+        tarjeta.add(new JLabel("Ganador:"), gbc);
+        gbc.gridx = 1; gbc.weightx = 0.8;
+        tarjeta.add(cmbGanador, gbc);
+        JButton btnDeshacer = UITheme.createSecondaryButton("Deshacer resultado");
+        btnDeshacer.setEnabled(editable && partida.isCompletada());
+        btnDeshacer.addActionListener(e -> {
+            try {
+                db.actualizarGanadorBracket(torneo.getIdTorneo(), partida.getRonda(),
+                        partida.getNumeroPartida(), partida.getTipoPartida(), null);
+                actualizarBracket.run();
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(dialog, ex.getMessage(),
+                        "No se pudo deshacer el resultado", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        gbc.gridx = 2; gbc.weightx = 0;
+        tarjeta.add(btnDeshacer, gbc);
+        return tarjeta;
+    }
+
+    private String nombreRondaBracket(int ronda, int ultimaRonda) {
+        if (ronda == ultimaRonda) return "Final";
+        if (ronda == ultimaRonda - 1 && ultimaRonda >= 2) return "Semifinales";
+        if (ronda == ultimaRonda - 2 && ultimaRonda >= 4) return "Cuartos";
+        return "Ronda " + ronda;
+    }
+
     private void finalizarTorneoSeleccionado() {
         Torneo torneo = getTorneoSeleccionado();
         if (torneo == null) {
@@ -1189,9 +1393,29 @@ public class TorneosPanel extends JPanel {
         for (ParticipanteTorneo participante : db.getParticipantesByTorneo(torneo.getIdTorneo())) {
             if (participante.isPagoConfirmado()) pagados.add(participante);
         }
+        boolean hayBracket = db.existeBracketTorneo(torneo.getIdTorneo());
+        Map<Integer, Integer> puestosAutomaticos = new LinkedHashMap<>();
+        if (hayBracket) {
+            try {
+                puestosAutomaticos = db.getPuestosAutomaticosBracket(torneo.getIdTorneo());
+            } catch (RuntimeException ex) {
+                JOptionPane.showMessageDialog(this, ex.getMessage(), "Bracket incompleto", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+        }
         if (pagados.size() < premios.size()) {
             JOptionPane.showMessageDialog(this, "No hay suficientes inscripciones pagadas para asignar todos los puestos premiados.", "No se puede finalizar", JOptionPane.WARNING_MESSAGE);
             return;
+        }
+        if (hayBracket) {
+            for (PremioTorneo premio : premios) {
+                if (premio.getPosicion() <= 3 && !puestosAutomaticos.containsKey(premio.getPosicion())) {
+                    JOptionPane.showMessageDialog(this,
+                            "Completa el partido por el tercer lugar para asignar automáticamente ese puesto.",
+                            "Bracket incompleto", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+            }
         }
 
         JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Asignar ganadores y finalizar torneo", true);
@@ -1220,8 +1444,22 @@ public class TorneosPanel extends JPanel {
                 }
             });
             selecciones.put(premio.getPosicion(), combo);
+            Integer idClienteAutomatico = puestosAutomaticos.get(premio.getPosicion());
+            if (idClienteAutomatico != null) {
+                for (int participanteIndex = 0; participanteIndex < combo.getItemCount(); participanteIndex++) {
+                    ParticipanteTorneo participante = combo.getItemAt(participanteIndex);
+                    if (participante.getIdCliente() == idClienteAutomatico) {
+                        combo.setSelectedItem(participante);
+                        break;
+                    }
+                }
+                combo.setEnabled(false);
+            } else {
+                combo.setSelectedIndex(-1);
+            }
             gbc.gridx = 0; gbc.gridy = i; gbc.weightx = 0.4;
-            form.add(new JLabel("Puesto " + premio.getPosicion() + " — " + descripcion + ":"), gbc);
+            String origenGanador = idClienteAutomatico == null ? "" : " (Bracket)";
+            form.add(new JLabel("Puesto " + premio.getPosicion() + origenGanador + " — " + descripcion + ":"), gbc);
             gbc.gridx = 1; gbc.weightx = 0.6;
             form.add(combo, gbc);
         }
