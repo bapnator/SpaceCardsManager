@@ -6,6 +6,8 @@ import com.spacecards.model.Usuario;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.io.File;
+import java.io.IOException;
 import java.util.List;
 
 public class LoginDialog extends JDialog {
@@ -146,6 +148,7 @@ public class LoginDialog extends JDialog {
         btnComenzar.addActionListener(e -> {
             String password = new String(txtPassword.getPassword()).trim();
             if (!DatabaseService.ASH_BRIDGE_USER.isPasswordValid(password)) {
+                playFailureVideo();
                 JOptionPane.showMessageDialog(this,
                         "La contraseña del usuario puente es incorrecta.",
                         "Acceso denegado",
@@ -257,6 +260,7 @@ public class LoginDialog extends JDialog {
                 Usuario usuario = (Usuario) item;
                 String password = new String(txtPassword.getPassword()).trim();
                 if (!db.authenticateUsuario(usuario, password)) {
+                    playFailureVideo();
                     JOptionPane.showMessageDialog(this,
                             "La contraseña es incorrecta para el usuario seleccionado.",
                             "Acceso denegado",
@@ -282,6 +286,33 @@ public class LoginDialog extends JDialog {
 
         setContentPane(root);
         getRootPane().setDefaultButton(btnEntrar);
+    }
+
+    private void playFailureVideo() {
+        File video = new File("gato.mp4").getAbsoluteFile();
+        if (!video.isFile()) {
+            JOptionPane.showMessageDialog(this,
+                    "No se encontró el video: " + video,
+                    "No se pudo reproducir el video",
+                    JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        if (!Desktop.isDesktopSupported()
+                || !Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+            JOptionPane.showMessageDialog(this,
+                    "Este sistema no permite abrir el video con un reproductor predeterminado.",
+                    "No se pudo reproducir el video",
+                    JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        try {
+            Desktop.getDesktop().open(video);
+        } catch (IOException | UnsupportedOperationException | SecurityException ex) {
+            JOptionPane.showMessageDialog(this,
+                    "No se pudo abrir el video: " + ex.getMessage(),
+                    "No se pudo reproducir el video",
+                    JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     private boolean showRequiredPasswordChangeDialog(Usuario usuario, String temporaryPassword) {
