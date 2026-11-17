@@ -75,6 +75,11 @@ public class DatabasePanel extends JPanel {
         JButton btnScript = UITheme.createSecondaryButton("Ver Esquema DDL");
         btnScript.addActionListener(e -> showSqlScriptDialog());
 
+        JButton btnSync = UITheme.createPrimaryButton("Reconectar MariaDB");
+        btnSync.setToolTipText("Reconectar a MariaDB y subir datos pendientes del SQLite local");
+        btnSync.addActionListener(e -> attemptReconnectAndSync());
+
+        headerButtons.add(btnSync);
         headerButtons.add(btnConfig);
         headerButtons.add(btnOpen);
         headerButtons.add(btnReset);
@@ -170,7 +175,16 @@ public class DatabasePanel extends JPanel {
     }
 
     public void refreshPanel() {
-        lblDbStatus.setText("" + db.getConnectionStatus() + " | Driver: org.sqlite.JDBC (SQLite 3)");
+        String status = db.getConnectionStatus();
+        if (db.isInFallbackMode()) {
+            lblDbStatus.setForeground(UITheme.COLOR_ACCENT);
+            status += " | DATOS PENDIENTES POR SINCRONIZAR";
+        } else if (db.isMariaDb()) {
+            lblDbStatus.setForeground(UITheme.COLOR_SUCCESS);
+        } else {
+            lblDbStatus.setForeground(UITheme.COLOR_SUCCESS);
+        }
+        lblDbStatus.setText(status);
         lblDbPath.setText("Archivo activo: " + db.getCurrentDbPath());
 
         // Actualizar estadísticas de tablas
@@ -281,7 +295,72 @@ public class DatabasePanel extends JPanel {
         dlg.setVisible(true);
     }
 
-    private void showConfigDialog() {
+    private void attemptReconnectAndSync() {
+        if (!db.isInFallbackMode() && db.isMariaDb()) {
+            JOptionPane.showMessageDialog(this,
+                    "MariaDB ya esta conectado y funcionando correctamente.\nNo hay datos pendientes por sincronizar.",
+                    "Conexion Activa", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        if (!db.isInFallbackMode() && !db.isMariaDb()) {
+            int confirm = JOptionPane.showConfirmDialog(this,
+                    "Estas en modo SQLite directo (no es fallback automatico).\n" +
+                    "¿Deseas subir todos los datos actuales de SQLite a MariaDB remoto?\n\n" +
+                    "ADVERTENCIA: Esto REEMPLAZARA todo lo que haya en MariaDB con los datos locales.",
+                    "Sincronizar SQLite a MariaDB", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (confirm != JOptionPane.YES_OPTION) return;
+
+            setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+            boolean ok = db.syncSqliteToMariaDb();
+            setCursor(Cursor.getDefaultCursor());
+            if (ok) {
+                JOptionPane.showMessageDialog(this,
+                        "Datos sincronizados correctamente a MariaDB.\n" + db.getConnectionStatus(),
+                        "Sincronizacion Exitosa", JOptionPane.INFORMATION_MESSAGE);
+            } else {
+                JOptionPane.showMessageDialog(this,
+                        "No se pudo sincronizar:\n" + db.getConnectionStatus(),
+                        "Error de Sincronizacion", JOptionPane.ERROR_MESSAGE);
+            }
+            refreshPanel();
+            if (onStatusChange != null) onStatusChange.run();
+            return;
+        }
+
+        // Modo fallback automatico: intentar reconectar
+        int confirm = JOptionPane.showConfirmDialog(this,
+                "Se detectaron datos pendientes en SQLite local (modo fallback).\n" +
+                "Al reconectar, se reemplazara todo el contenido de MariaDB con la copia local de SQLite.\n\n" +
+                "IP destino: " + db.getHost() + ":" + db.getPort() + " / " + db.getDbName() + "\n" +
+                "¿Deseas intentar ahora?",
+                "Reconectar y Sincronizar", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+        if (confirm != JOptionPane.YES_OPTION) return;
+
+        setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+        boolean ok = db.attemptMariaDbReconnect();
+        setCursor(Cursor.getDefaultCursor());
+
+        if (ok) {
+            JOptionPane.showMessageDialog(this,
+                    "Reconexion exitosa! Todos los datos de SQLite fueron subidos a MariaDB.\n\n" +
+                    db.getConnectionStatus(),
+                    "Reconexion y Sincronizacion Completa", JOptionPane.INFORMATION_MESSAGE);
+        } else {
+            JOptionPane.showMessageDialog(this,
+                    "No se pudo conectar a MariaDB remoto.\n\n" +
+                    "Verifica que:\n" +
+                    "  - La Raspberry Pi este encendida\n" +
+                    "  - Tailscale este conectado\n" +
+                    "  - MariaDB este corriendo (puerto 3306)\n\n" +
+                    "Los datos siguen seguros en SQLite local.",
+                    "MariaDB No Disponible", JOptionPane.WARNING_MESSAGE);
+        }
+        refreshPanel();
+        if (onStatusChange != null) onStatusChange.run();
+    }
+
+        private void showConfigDialog() {
         JDialog dlg = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Configuración de Conexión de Base de Datos", true);
         dlg.setSize(520, 420);
         dlg.setLocationRelativeTo(this);
@@ -368,6 +447,15 @@ public class DatabasePanel extends JPanel {
             String u = txtUser.getText().trim();
             String pwd = new String(txtPass.getPassword()).trim();
             String sqP = txtSqlitePath.getText().trim();
+
+            if ("mariadb".equals(selectedType)) {
+                int confirm = JOptionPane.showConfirmDialog(dlg,
+                        "Al conectar, se reemplazara todo el contenido de MariaDB con los datos del SQLite local:\n" +
+                        sqP + "\n\n¿Deseas continuar?",
+                        "Importacion SQLite a MariaDB",
+                        JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                if (confirm != JOptionPane.YES_OPTION) return;
+            }
 
             db.saveProperties(selectedType, h, p, dbN, u, pwd, sqP);
             boolean ok = db.initConnectionFromConfig();

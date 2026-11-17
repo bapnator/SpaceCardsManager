@@ -84,6 +84,9 @@ public class DatabaseService {
     private static DatabaseService instance;
 
     private static final String DEFAULT_DB_FILE = "spacecards.db";
+    private static final int MARIA_CONNECT_TIMEOUT_MS = 3000;
+    private static final int MARIA_SOCKET_TIMEOUT_MS = 5000;
+    private static final int MARIA_VALIDATION_TIMEOUT_SECONDS = 1;
         private static final String[][] SQLITE_BACKUP_TABLES = {
             {"cliente", "id_cliente", "nombre", "apellido", "correo_electronico", "telefono", "fecha_registro"},
             {"usuario", "id_usuario", "nombre", "apellido", "rol", "horario", "activo", "password_hash", "must_change_password"},
@@ -110,6 +113,7 @@ public class DatabaseService {
         private String backupStatus = "Respaldo SQLite no inicializado";
         private boolean suspendBackupSync;
     private boolean automaticSqliteFallback;
+    private boolean pendingSqliteChanges;
 
     private String dbType = "mariadb"; // "mariadb" o "sqlite"
     private String host = "100.x.y.z";
@@ -201,6 +205,7 @@ public class DatabaseService {
                 System.out.println("Aviso: No se pudo conectar a MariaDB remoto (" + host + "). Activando fallback a SQLite local...");
                 boolean sqliteReady = initConnection(sqlitePath);
                 automaticSqliteFallback = sqliteReady;
+                pendingSqliteChanges = sqliteReady;
                 return sqliteReady;
             }
             return true;
@@ -214,44 +219,52 @@ public class DatabaseService {
      */
     public synchronized boolean initMariaDbConnection(String host, int port, String dbName, String user, String password) {
         automaticSqliteFallback = false;
+        Connection previousConnection = connection;
+        Connection previousBackupConnection = backupConnection;
+        String previousDbType = dbType;
         this.dbType = "mariadb";
         this.host = host;
         this.port = port;
         this.dbName = dbName;
         this.user = user;
         this.password = password;
+        Connection mariaConnection = null;
         try {
-            if (backupConnection != null) {
-                try { backupConnection.close(); } catch (SQLException ignored) {}
-                backupConnection = null;
-            }
-            if (connection != null && !connection.isClosed()) {
-                connection.close();
-            }
-
             try {
                 Class.forName("org.mariadb.jdbc.Driver");
             } catch (ClassNotFoundException e) {
                 Class.forName("com.mysql.cj.jdbc.Driver");
             }
 
-            String url = "jdbc:mariadb://" + host + ":" + port + "/" + dbName +
-                    "?permitMysqlScheme=true&autoReconnect=true&connectTimeout=4000&socketTimeout=10000";
-            this.connection = DriverManager.getConnection(url, user, password);
+            String url = createMariaDbUrl(host, port, dbName);
+            mariaConnection = DriverManager.getConnection(url, user, password);
+            this.connection = mariaConnection;
 
             boolean wasSuspended = suspendBackupSync;
             suspendBackupSync = true;
             try {
                 createTablesIfNotExist();
 
-                if (isTableEmpty("franquicia")) {
-                    seedFranquicias();
-                }
-                if (isTableEmpty("producto")) {
-                    seedSampleData();
+                if (new File(sqlitePath).isFile()) {
+                    importSqliteToMariaDb(mariaConnection);
+                } else {
+                    if (isTableEmpty("franquicia")) {
+                        seedFranquicias();
+                    }
+                    if (isTableEmpty("producto")) {
+                        seedSampleData();
+                    }
                 }
             } finally {
                 suspendBackupSync = wasSuspended;
+            }
+
+            if (previousBackupConnection != null) {
+                try { previousBackupConnection.close(); } catch (SQLException ignored) {}
+            }
+            backupConnection = null;
+            if (previousConnection != null && previousConnection != mariaConnection) {
+                try { previousConnection.close(); } catch (SQLException ignored) {}
             }
 
             try {
@@ -261,13 +274,107 @@ public class DatabaseService {
                 backupStatus = "Respaldo SQLite no disponible: " + backupEx.getMessage();
             }
 
+            pendingSqliteChanges = false;
             connectionStatus = "MariaDB Remoto Activo (" + host + ":" + port + " / " + dbName + ")";
             return true;
         } catch (Exception ex) {
+            if (mariaConnection != null) {
+                try { mariaConnection.close(); } catch (SQLException ignored) {}
+            }
+            connection = previousConnection;
+            backupConnection = previousBackupConnection;
+            dbType = previousDbType;
+            automaticSqliteFallback = "sqlite".equalsIgnoreCase(previousDbType);
             connectionStatus = "Error de conexión MariaDB (" + host + "): " + ex.getMessage();
             ex.printStackTrace();
             return false;
         }
+    }
+
+    private void importSqliteToMariaDb(Connection mariaConnection) throws Exception {
+        Class.forName("org.sqlite.JDBC");
+        try (Connection sqliteConnection = DriverManager.getConnection("jdbc:sqlite:" + sqlitePath)) {
+            try (Statement st = sqliteConnection.createStatement()) {
+                st.execute("PRAGMA foreign_keys = ON;");
+            }
+            createTablesIfNotExist(sqliteConnection, "sqlite");
+            copyAllTables(sqliteConnection, mariaConnection);
+        }
+    }
+
+    private void copyAllTables(Connection source, Connection target) throws SQLException {
+        boolean originalAutoCommit = target.getAutoCommit();
+        try {
+            target.setAutoCommit(false);
+            try (Statement st = target.createStatement()) {
+                st.execute("SET FOREIGN_KEY_CHECKS = 0");
+            }
+
+            for (int i = SQLITE_BACKUP_TABLES.length - 1; i >= 0; i--) {
+                try (Statement st = target.createStatement()) {
+                    st.executeUpdate("DELETE FROM " + SQLITE_BACKUP_TABLES[i][0]);
+                }
+            }
+            for (String[] table : SQLITE_BACKUP_TABLES) {
+                copyTable(source, target, table);
+            }
+            target.commit();
+        } catch (SQLException ex) {
+            target.rollback();
+            throw ex;
+        } finally {
+            try (Statement st = target.createStatement()) {
+                st.execute("SET FOREIGN_KEY_CHECKS = 1");
+            } finally {
+                target.setAutoCommit(originalAutoCommit);
+            }
+        }
+    }
+
+    private void copyTable(Connection source, Connection target, String[] table) throws SQLException {
+        String tableName = table[0];
+        String columns = String.join(", ", Arrays.copyOfRange(table, 1, table.length));
+        String placeholders = String.join(", ", Collections.nCopies(table.length - 1, "?"));
+        String insertSql = "INSERT INTO " + tableName + " (" + columns + ") VALUES (" + placeholders + ")";
+
+        try (Statement sourceStatement = source.createStatement();
+             ResultSet rows = sourceStatement.executeQuery("SELECT " + columns + " FROM " + tableName);
+             PreparedStatement insert = target.prepareStatement(insertSql)) {
+            int batchSize = 0;
+            while (rows.next()) {
+                for (int i = 1; i < table.length; i++) {
+                    insert.setObject(i, rows.getObject(i));
+                }
+                insert.addBatch();
+                if (++batchSize % 500 == 0) {
+                    insert.executeBatch();
+                }
+            }
+            if (batchSize % 500 != 0) {
+                insert.executeBatch();
+            }
+        }
+    }
+
+    public synchronized boolean syncSqliteToMariaDb() {
+        if ("sqlite".equalsIgnoreCase(dbType)) {
+            sqlitePath = currentDbPath;
+        }
+        return initMariaDbConnection(host, port, dbName, user, password);
+    }
+
+    public synchronized boolean attemptMariaDbReconnect() {
+        return initMariaDbConnection(host, port, dbName, user, password);
+    }
+
+    public synchronized boolean isInFallbackMode() {
+        return automaticSqliteFallback;
+    }
+
+    private String createMariaDbUrl(String host, int port, String dbName) {
+        return "jdbc:mariadb://" + host + ":" + port + "/" + dbName +
+                "?permitMysqlScheme=true&connectTimeout=" + MARIA_CONNECT_TIMEOUT_MS +
+                "&socketTimeout=" + MARIA_SOCKET_TIMEOUT_MS;
     }
 
     /**
@@ -317,20 +424,20 @@ public class DatabaseService {
         if ("mariadb".equalsIgnoreCase(dbType)) {
             boolean remoteAvailable = false;
             try {
-                remoteAvailable = connection != null && !connection.isClosed() && connection.isValid(2);
+                remoteAvailable = connection != null && !connection.isClosed() &&
+                        connection.isValid(MARIA_VALIDATION_TIMEOUT_SECONDS);
             } catch (SQLException ignored) {}
 
             if (!remoteAvailable) {
                 if (connection != null) {
                     try { connection.close(); } catch (SQLException ignored) {}
                 }
-                String url = "jdbc:mariadb://" + host + ":" + port + "/" + dbName +
-                        "?permitMysqlScheme=true&autoReconnect=true&connectTimeout=6000&socketTimeout=15000";
                 try {
-                    connection = DriverManager.getConnection(url, user, password);
+                    connection = DriverManager.getConnection(createMariaDbUrl(host, port, dbName), user, password);
                 } catch (SQLException remoteFailure) {
                     if (initConnection(sqlitePath)) {
                         automaticSqliteFallback = true;
+                        pendingSqliteChanges = true;
                         return connection;
                     }
                     throw remoteFailure;

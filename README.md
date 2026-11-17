@@ -14,6 +14,10 @@ Aplicación de escritorio moderna desarrollada en **Java (JDK 24/25)** con persi
 2. **Compilación manual:**
    Si realizas cambios en el código fuente, haz doble clic en [compile.bat](file:///c:/9Sem/is/U2/SpaceCardsManager_U2/compile.bat).
 
+### Importación a MariaDB
+
+Cada conexión exitosa a MariaDB reemplaza sus datos con todas las tablas del archivo SQLite configurado en `database.properties` (`db.sqlite.file`), si ese archivo existe. El archivo SQLite se conserva; MariaDB no se combina con los datos locales. Al conectar desde la pantalla de configuración se solicita confirmación porque los datos remotos existentes serán reemplazados.
+
 ---
 
 ## 🗄️ Estructura de la Base de Datos SQLite (`spacecards.db`)
