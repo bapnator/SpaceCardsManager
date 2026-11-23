@@ -111,6 +111,7 @@ public class VentasPanel extends JPanel {
         };
         tableCatalog = new JTable(catalogModel);
         UITheme.formatTable(tableCatalog);
+        UITheme.hideTableColumn(tableCatalog, "ID");
         panelCatalogo.add(new JScrollPane(tableCatalog), BorderLayout.CENTER);
 
         // Botón añadir

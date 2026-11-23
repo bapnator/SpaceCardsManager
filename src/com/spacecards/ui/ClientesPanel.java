@@ -85,6 +85,7 @@ public class ClientesPanel extends JPanel {
         };
         table = new JTable(tableModel);
         UITheme.formatTable(table);
+        UITheme.hideTableColumn(table, "ID");
         cardPanel.add(new JScrollPane(table), BorderLayout.CENTER);
 
         this.add(cardPanel, BorderLayout.CENTER);

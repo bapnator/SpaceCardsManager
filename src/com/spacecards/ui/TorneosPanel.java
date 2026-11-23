@@ -115,6 +115,7 @@ public class TorneosPanel extends JPanel {
         };
         tableTorneos = new JTable(torneosModel);
         UITheme.formatTable(tableTorneos);
+        UITheme.hideTableColumn(tableTorneos, "ID");
         tableTorneos.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) refreshParticipantes();
         });
@@ -156,6 +157,7 @@ public class TorneosPanel extends JPanel {
         };
         tablePart = new JTable(partModel);
         UITheme.formatTable(tablePart);
+        UITheme.hideTableColumn(tablePart, "ID Inscripción");
         cardPart.add(new JScrollPane(tablePart), BorderLayout.CENTER);
         contentPanel.add(cardPart);
 
@@ -211,7 +213,7 @@ public class TorneosPanel extends JPanel {
             Cliente c = pt.getCliente();
             partModel.addRow(new Object[]{
                     "#" + pt.getIdInscripcion(),
-                    c != null ? c.getNombreCompleto() : "Cliente #" + pt.getIdCliente(),
+                    c != null ? c.getNombreCompleto() : "Cliente no disponible",
                     c != null ? c.getCorreoElectronico() : "-",
                     c != null ? c.getTelefono() : "-",
                     pt.getIdJugadorTcg() != null ? pt.getIdJugadorTcg() : "Sin ID TCG",
@@ -876,6 +878,7 @@ public class TorneosPanel extends JPanel {
         };
         JTable table = new JTable(model);
         UITheme.formatTable(table);
+        UITheme.hideTableColumn(table, "ID");
         List<ProductoPremio> productos = new ArrayList<>();
         Runnable refresh = () -> {
             productos.clear();

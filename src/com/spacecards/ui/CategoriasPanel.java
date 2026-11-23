@@ -92,6 +92,7 @@ public class CategoriasPanel extends JPanel {
         };
         table = new JTable(tableModel);
         UITheme.formatTable(table);
+        UITheme.hideTableColumn(table, "ID");
         table.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent e) {

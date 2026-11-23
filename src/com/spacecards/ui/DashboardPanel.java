@@ -21,6 +21,7 @@ import java.util.Map;
 public class DashboardPanel extends JPanel {
     private final DatabaseService db = DatabaseService.getInstance();
     private final JLabel lblTotalVentas = new JLabel("$0.00");
+    private final JComboBox<String> cmbPeriodoIngresos = new JComboBox<>(new String[]{"Histórico", "Solo hoy"});
     private final JLabel lblStockTotal = new JLabel("0 items");
     private final JLabel lblPreventasCount = new JLabel("0 activas");
     private final JLabel lblAnticiposPreventas = new JLabel("$0.00");
@@ -33,6 +34,8 @@ public class DashboardPanel extends JPanel {
     private final DefaultTableModel torneosModel;
     private final DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
     private final java.util.List<Venta> currentVentasList = new java.util.ArrayList<>();
+    private BigDecimal ingresosHistoricos = BigDecimal.ZERO;
+    private BigDecimal ingresosHoy = BigDecimal.ZERO;
 
     public DashboardPanel() {
         this.setLayout(new BorderLayout(16, 16));
@@ -79,7 +82,7 @@ public class DashboardPanel extends JPanel {
         JPanel statsGrid = new JPanel(new GridLayout(1, 5, 16, 0));
         statsGrid.setOpaque(false);
 
-        statsGrid.add(createKpiCard("Ingresos por Ventas", lblTotalVentas, UITheme.COLOR_SUCCESS));
+        statsGrid.add(createIngresosKpiCard());
         statsGrid.add(createKpiCard("Inventario Disponible", lblStockTotal, UITheme.COLOR_PRIMARY));
         statsGrid.add(createKpiCard("Preventas Activas", lblPreventasCount, UITheme.COLOR_ACCENT));
         statsGrid.add(createKpiCard("Anticipos Recaudados", lblAnticiposPreventas, UITheme.COLOR_SUCCESS));
@@ -136,6 +139,7 @@ public class DashboardPanel extends JPanel {
         };
         tableVentas = new JTable(ventasModel);
         UITheme.formatTable(tableVentas);
+        UITheme.hideTableColumn(tableVentas, "ID");
         tableVentas.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent e) {
@@ -184,14 +188,39 @@ public class DashboardPanel extends JPanel {
         return card;
     }
 
+    private JPanel createIngresosKpiCard() {
+        JPanel card = UITheme.createCardPanel();
+        card.setLayout(new BorderLayout(4, 4));
+        cmbPeriodoIngresos.setFont(UITheme.FONT_REGULAR);
+        cmbPeriodoIngresos.setToolTipText("Cambiar entre ingresos históricos y los de hoy");
+        cmbPeriodoIngresos.addActionListener(e -> actualizarIndicadorIngresos());
+
+        lblTotalVentas.setFont(UITheme.FONT_BIG_NUMBER);
+        lblTotalVentas.setForeground(UITheme.COLOR_SUCCESS);
+        card.add(cmbPeriodoIngresos, BorderLayout.NORTH);
+        card.add(lblTotalVentas, BorderLayout.CENTER);
+        return card;
+    }
+
+    private void actualizarIndicadorIngresos() {
+        BigDecimal ingresos = "Solo hoy".equals(cmbPeriodoIngresos.getSelectedItem())
+                ? ingresosHoy : ingresosHistoricos;
+        lblTotalVentas.setText(formatMoney(ingresos));
+    }
+
     public void refreshData() {
         // Calcular total ventas
-        BigDecimal sum = BigDecimal.ZERO;
+        ingresosHistoricos = BigDecimal.ZERO;
+        ingresosHoy = BigDecimal.ZERO;
+        LocalDate hoy = LocalDate.now();
         List<Venta> listaVentas = db.getVentas();
         for (Venta v : listaVentas) {
-            sum = sum.add(v.getMontoTotal());
+            ingresosHistoricos = ingresosHistoricos.add(v.getMontoTotal());
+            if (v.getFechaVenta() != null && hoy.equals(v.getFechaVenta().toLocalDate())) {
+                ingresosHoy = ingresosHoy.add(v.getMontoTotal());
+            }
         }
-        lblTotalVentas.setText("$" + sum);
+        actualizarIndicadorIngresos();
 
         // Calcular stock
         int totalUnits = 0;
@@ -304,7 +333,7 @@ public class DashboardPanel extends JPanel {
 
         java.util.List<com.spacecards.model.DetalleVenta> detalles = db.getDetallesByVenta(v.getIdVenta());
         for (com.spacecards.model.DetalleVenta d : detalles) {
-            String pName = d.getProducto() != null ? d.getProducto().getNombre() : "ID #" + d.getIdProducto();
+            String pName = d.getProducto() != null ? d.getProducto().getNombre() : "Producto no disponible";
             String pCat = d.getProducto() != null ? d.getProducto().getCategoria() : "-";
             detModel.addRow(new Object[]{
                     pName,

@@ -3,6 +3,7 @@ package com.spacecards.ui;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.TableColumnModel;
 import java.awt.*;
 
 public class UITheme {
@@ -76,6 +77,16 @@ public class UITheme {
         if (table.getColumnCount() > 0) {
             table.getColumnModel().getColumn(0).setPreferredWidth(50);
             table.getColumnModel().getColumn(0).setCellRenderer(centerRenderer);
+        }
+    }
+
+    public static void hideTableColumn(JTable table, String columnName) {
+        TableColumnModel columns = table.getColumnModel();
+        for (int i = 0; i < columns.getColumnCount(); i++) {
+            if (columnName.equals(columns.getColumn(i).getHeaderValue())) {
+                columns.removeColumn(columns.getColumn(i));
+                return;
+            }
         }
     }
 }
