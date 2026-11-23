@@ -63,7 +63,7 @@ public class SidebarPanel extends JPanel {
         addNavItem(navContainer, "Clientes", "CLIENTES", false);
         addNavItem(navContainer, "Torneos", "TORNEOS", false);
         addNavItem(navContainer, "Personal", "USUARIOS", false);
-        addNavItem(navContainer, "Gestión de información", "DATABASE", false);
+       // addNavItem(navContainer, "Gestión de información", "DATABASE", false);
 
         this.add(navContainer, BorderLayout.CENTER);
 
